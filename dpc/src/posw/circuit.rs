@@ -49,6 +49,14 @@ impl<N: Network> PoSWCircuit<N> {
         })
     }
 
+    pub fn from_raw(block_header_root: N::BlockHeaderRoot, nonce: N::PoSWNonce, hashed_leaves: Vec<<<N::BlockHeaderRootParameters as MerkleParameters>::H as CRH>::Output>) -> Self {
+        Self {
+            block_header_root,
+            nonce,
+            hashed_leaves,
+        }
+    }
+
     /// Creates a blank PoSW circuit for setup.
     pub fn blank() -> Result<Self> {
         let empty_hash = N::block_header_root_parameters()
