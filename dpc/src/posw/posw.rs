@@ -17,14 +17,7 @@
 //! Generic PoSW Miner and Verifier, compatible with any implementer of the SNARK trait.
 
 use crate::{
-    posw::PoSWCircuit,
-    BlockHeader,
-    BlockHeaderMetadata,
-    BlockTemplate,
-    Network,
-    PoSWError,
-    PoSWProof,
-    PoSWScheme,
+    posw::PoSWCircuit, BlockHeader, BlockHeaderMetadata, BlockTemplate, Network, PoSWError, PoSWProof, PoSWScheme,
 };
 use snarkvm_algorithms::{traits::SNARK, SRS};
 use snarkvm_utilities::{FromBytes, ToBytes, UniformRand};
@@ -152,8 +145,13 @@ impl<N: Network> PoSWScheme<N> for PoSW<N> {
     ) -> Result<PoSWProof<N>, PoSWError> {
         let pk = self.proving_key.as_ref().expect("tried to mine without a PK set up");
 
+        let nn = UniformRand::rand(rng);
+        println!("proving with {}", nn);
         // Sample a random nonce.
-        circuit.set_nonce(UniformRand::rand(rng));
+        circuit.set_nonce(nn);
+
+        println!("posw!! new nonce {}", circuit.nonce());
+
 
         // TODO (raychu86): TEMPORARY - Remove this after testnet2 period.
         // Mine blocks with the deprecated PoSW mode for blocks behind `V12_UPGRADE_BLOCK_HEIGHT`.
@@ -163,14 +161,15 @@ impl<N: Network> PoSWScheme<N> for PoSW<N> {
             // Construct a PoSW proof.
             Ok(PoSWProof::<N>::new_hiding(
                 <crate::testnet2::DeprecatedPoSWSNARK<N> as SNARK>::prove_with_terminator(
-                    &pk, circuit, terminator, rng, gpu_index
+                    &pk, circuit, terminator, rng, gpu_index,
                 )?
                 .into(),
             ))
         } else {
             // Construct a PoSW proof.
             Ok(PoSWProof::<N>::new(
-                <<N as Network>::PoSWSNARK as SNARK>::prove_with_terminator(pk, circuit, terminator, rng, gpu_index)?.into(),
+                <<N as Network>::PoSWSNARK as SNARK>::prove_with_terminator(pk, circuit, terminator, rng, gpu_index)?
+                    .into(),
             ))
         }
     }

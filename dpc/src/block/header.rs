@@ -20,11 +20,7 @@ use snarkvm_utilities::{
     fmt,
     io::{Read, Result as IoResult, Write},
     str::FromStr,
-    FromBytes,
-    FromBytesDeserializer,
-    ToBytes,
-    ToBytesSerializer,
-    UniformRand,
+    FromBytes, FromBytesDeserializer, ToBytes, ToBytesSerializer, UniformRand,
 };
 
 use anyhow::{anyhow, Result};
@@ -156,6 +152,7 @@ impl<N: Network> BlockHeader<N> {
 
         // Run one iteration of PoSW.
         // Warning: this operation is unchecked.
+        println!("posw!! {}", circuit.nonce());
         let proof = N::posw().prove_once_unchecked(&mut circuit, block_template, terminator, rng, gpu_index)?;
 
         // Construct a block header.

@@ -16,8 +16,7 @@
 
 use crate::{
     fiat_shamir::{DefaultCapacityAlgebraicSponge, FiatShamirError, FiatShamirRng},
-    PhantomData,
-    Vec,
+    PhantomData, Vec,
 };
 use smallvec::SmallVec;
 use snarkvm_fields::{FieldParameters, PrimeField, ToConstraintField};
@@ -104,6 +103,7 @@ where
             .map(|bits| BaseField::from_repr(BaseField::BigInteger::from_bits_be(bits)).unwrap())
             .collect::<Vec<BaseField>>();
 
+        println!("{} <<<", file!());
         self.s.absorb(&elements);
     }
 

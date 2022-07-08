@@ -133,6 +133,7 @@ impl<N: Network> ConstraintSynthesizer<N::InnerScalarField> for PoSWCircuit<N> {
             .iter()
             .enumerate()
             .map(|(i, leaf)| {
+                println!("gen cs {} {}", i, leaf);
                 <N::BlockHeaderRootCRHGadget as CRHGadget<
                     <N::BlockHeaderRootParameters as MerkleParameters>::H,
                     N::InnerScalarField,

@@ -19,21 +19,13 @@ use crate::{
     fiat_shamir::traits::FiatShamirRng,
     marlin::{CircuitProvingKey, CircuitVerifyingKey, MarlinError, MarlinMode, Proof, UniversalSRS},
     prover::ProverConstraintSystem,
-    String,
-    ToString,
-    Vec,
+    String, ToString, Vec,
 };
 use snarkvm_algorithms::fft::EvaluationDomain;
 use snarkvm_fields::PrimeField;
 use snarkvm_gadgets::nonnative::params::OptimizationType;
 use snarkvm_polycommit::{
-    Evaluations,
-    LabeledCommitment,
-    LabeledPolynomial,
-    PCProof,
-    PCRandomness,
-    PCUniversalParams,
-    PolynomialCommitment,
+    Evaluations, LabeledCommitment, LabeledPolynomial, PCProof, PCRandomness, PCUniversalParams, PolynomialCommitment,
 };
 use snarkvm_r1cs::{ConstraintSynthesizer, SynthesisError};
 use snarkvm_utilities::{to_bytes_le, ToBytes};
@@ -47,6 +39,8 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 use rand_core::RngCore;
+
+use std::time::{Duration, SystemTime};
 
 /// The Marlin proof system.
 #[derive(Clone, Debug)]
@@ -65,12 +59,12 @@ pub struct MarlinSNARK<
 );
 
 impl<
-    TargetField: PrimeField,
-    BaseField: PrimeField,
-    PC: PolynomialCommitment<TargetField, BaseField>,
-    FS: FiatShamirRng<TargetField, BaseField>,
-    MM: MarlinMode,
-> MarlinSNARK<TargetField, BaseField, PC, FS, MM>
+        TargetField: PrimeField,
+        BaseField: PrimeField,
+        PC: PolynomialCommitment<TargetField, BaseField>,
+        FS: FiatShamirRng<TargetField, BaseField>,
+        MM: MarlinMode,
+    > MarlinSNARK<TargetField, BaseField, PC, FS, MM>
 {
     /// The personalization string for this protocol.
     /// Used to personalize the Fiat-Shamir RNG.
@@ -139,8 +133,12 @@ impl<
         }
 
         let commit_time = start_timer!(|| "Commit to index polynomials");
-        let (circuit_commitments, circuit_commitment_randomness): (_, _) =
-            PC::commit(&committer_key, circuit.iter().chain(vanishing_polys.iter()), None, gpu_index)?;
+        let (circuit_commitments, circuit_commitment_randomness): (_, _) = PC::commit(
+            &committer_key,
+            circuit.iter().chain(vanishing_polys.iter()),
+            None,
+            gpu_index,
+        )?;
         end_timer!(commit_time);
 
         let circuit_commitments = circuit_commitments
@@ -226,8 +224,12 @@ impl<
         }
 
         let commit_time = start_timer!(|| "Commit to index polynomials");
-        let (circuit_commitments, circuit_commitment_randomness): (_, _) =
-            PC::commit(&committer_key, index.iter().chain(vanishing_polynomials.iter()), None, gpu_index)?;
+        let (circuit_commitments, circuit_commitment_randomness): (_, _) = PC::commit(
+            &committer_key,
+            index.iter().chain(vanishing_polynomials.iter()),
+            None,
+            gpu_index,
+        )?;
         end_timer!(commit_time);
 
         let circuit_commitments = circuit_commitments
@@ -274,6 +276,32 @@ impl<
         let prover_time = start_timer!(|| "Marlin::Prover");
         // TODO: Add check that c is in the correct mode.
 
+        println!("marlin!! {}", MM::RECURSION);
+        println!("proving key a!! {}", circuit_proving_key.to_bytes_le().unwrap().len());
+        println!(
+            "  >> verify {}",
+            circuit_proving_key.circuit_verifying_key.to_bytes_le().unwrap().len()
+        );
+        // println!(
+        //     "proving key!! {}",
+        //     circuit_proving_key
+        //         .circuit_commitment_randomness
+        //         .to_bytes_le()
+        //         .unwrap()
+        //         .len()
+        // );
+        println!(
+            "  >> committer {}",
+            circuit_proving_key.committer_key.to_bytes_le().unwrap().len()
+        );
+
+        // println!(
+        //     "proving key!! {}",
+        //     circuit_proving_key.circuit.to_bytes_le().unwrap().len()
+        // );
+
+        let t0 = SystemTime::now();
+
         if terminator.load(Ordering::Relaxed) {
             return Err(MarlinError::Terminated);
         }
@@ -281,6 +309,8 @@ impl<
         let prover_init_state = AHPForR1CS::<_, MM>::prover_init(&circuit_proving_key.circuit, circuit)?;
         let public_input = prover_init_state.public_input();
         let padded_public_input = prover_init_state.padded_public_input();
+
+        println!("inited ffff {:?}", padded_public_input);
 
         let mut fs_rng = FS::new();
 
@@ -298,6 +328,8 @@ impl<
                 .unwrap(),
             );
         }
+
+        println!("t{} => {}", line!(), t0.elapsed().unwrap().as_secs());
 
         // --------------------------------------------------------------------
         // First round
@@ -343,6 +375,7 @@ impl<
 
         // --------------------------------------------------------------------
         // Second round
+        println!("t{} => {}", line!(), t0.elapsed().unwrap().as_secs());
 
         if terminator.load(Ordering::Relaxed) {
             return Err(MarlinError::Terminated);
@@ -380,6 +413,7 @@ impl<
 
         // --------------------------------------------------------------------
         // Third round
+        println!("t{} => {}", line!(), t0.elapsed().unwrap().as_secs());
 
         if terminator.load(Ordering::Relaxed) {
             return Err(MarlinError::Terminated);
@@ -387,7 +421,6 @@ impl<
 
         let (prover_third_message, prover_third_oracles) =
             AHPForR1CS::<_, MM>::prover_third_round(&verifier_second_msg, prover_state, zk_rng)?;
-
         let third_round_comm_time = start_timer!(|| "Committing to third round polys");
         let (third_commitments, third_commitment_randomnesses) = PC::commit_with_terminator(
             &circuit_proving_key.committer_key,
@@ -439,6 +472,8 @@ impl<
         };
 
         // Gather prover polynomials in one vector.
+        println!("t{} => {}", line!(), t0.elapsed().unwrap().as_secs());
+
         let polynomials: Vec<_> = circuit_proving_key
             .circuit
             .iter() // 12 items
@@ -489,7 +524,8 @@ impl<
             .chain(third_commitment_randomnesses)
             .collect();
 
-        if !MM::ZK {
+        if !MM::ZK { // is false
+            println!("mm::zk!@@@@*@*@* {}", MM::ZK);
             let empty_randomness = PC::Randomness::empty();
             assert!(commitment_randomnesses.iter().all(|r| r == &empty_randomness));
         }
@@ -574,6 +610,8 @@ impl<
         assert_eq!(proof.pc_proof.is_hiding(), MM::ZK);
         proof.print_size_info();
         end_timer!(prover_time);
+
+        println!("t{} => {}", line!(), t0.elapsed().unwrap().as_secs());
 
         Ok(proof)
     }

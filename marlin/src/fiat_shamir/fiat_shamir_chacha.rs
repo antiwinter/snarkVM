@@ -115,21 +115,32 @@ impl<TargetField: PrimeField, BaseField: PrimeField, D: Digest + Clone + Debug> 
     }
 
     fn absorb_bytes(&mut self, elements: &[u8]) {
+        println!("elem {}: {:02x?} <<<", elements.len(), &elements[..32]);
         let mut bytes = elements.to_vec();
+        println!("bytes {}: {:02x?} <<<", bytes.len(), &bytes[..32]);
+
         // If a seed exists, extend the byte vector to include the existing seed.
+        // println!("seed {}: {:02x?} <<<", self.seed.unwrap().len(), self.seed.unwrap());
         if let Some(seed) = &self.seed {
             bytes.extend_from_slice(seed);
         }
+        // println!("seed_1 {}: {:02x?} <<<", self.seed.unwrap().len(), self.seed.unwrap());
+        println!("bytes_slice {}: {:02x?} <<<", bytes.len(), &bytes[..32]);
 
         let new_seed = (*D::digest(&bytes).as_slice()).to_vec();
+        println!("seed_new {}: {:02x?} <<<", new_seed.len(), new_seed);
+
         self.seed = Some(new_seed.to_vec());
+        // println!("seed_2 {}: {:02x?} <<<", self.seed.unwrap().len(), self.seed.unwrap());
 
         let mut seed = [0u8; 32];
         for (i, byte) in new_seed.as_slice().iter().enumerate() {
             seed[i] = *byte;
         }
 
+        println!("seed_cha {}: {:02x?} <<<", seed.len(), seed);
         self.r = Some(ChaChaRng::from_seed(seed));
+        println!("rrr {:02x?} <<<", &self.r.as_ref().unwrap());
     }
 
     fn squeeze_nonnative_field_elements(
@@ -144,8 +155,17 @@ impl<TargetField: PrimeField, BaseField: PrimeField, D: Digest + Clone + Debug> 
         };
 
         let mut res = Vec::<TargetField>::new();
+
+        let mut rng1: ChaChaRng = rng.clone();
+        // for _ in 0..16 {
+        //     println!("rngdata {:x?}", rng1.next_u64());
+        // }
+
         for _ in 0..num {
-            res.push(TargetField::rand(rng));
+            let a = TargetField::rand(&mut rng1);
+            TargetField::rand(rng);
+            println!("squeeze {:02x?}", &a.to_bytes_le());
+            res.push(a);
         }
         Ok(res)
     }

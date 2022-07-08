@@ -17,7 +17,7 @@
 #![allow(unused_imports)]
 pub use inner::*;
 
-#[cfg(feature = "print-trace")]
+// #[cfg(feature = "print-trace")]
 #[macro_use]
 pub mod inner {
     use std::{sync::atomic::AtomicUsize, time::Instant};
@@ -121,6 +121,8 @@ pub mod inner {
                 final_message += &format!("{}{}\n", msg_indent, line,);
             }
 
+            println!("which trace full {}", line!());
+
             // Todo: Recursively ensure that *entire* string is of appropriate
             // width (not just message).
             println!("{}{}", start_indent, start_msg);
@@ -157,35 +159,36 @@ pub mod inner {
     }
 }
 
-#[cfg(not(feature = "print-trace"))]
-#[macro_use]
-mod inner {
-    pub struct TimerInfo;
+// #[cfg(not(feature = "print-trace"))]
+// #[macro_use]
+// mod inner {
+//     pub struct TimerInfo;
 
-    #[macro_export]
-    macro_rules! start_timer {
-        ($msg:expr) => {
-            $crate::TimerInfo
-        };
-    }
-    #[macro_export]
-    macro_rules! add_to_trace {
-        ($title:expr, $msg:expr) => {
-            let _ = $msg;
-        };
-    }
+//     #[macro_export]
+//     macro_rules! start_timer {
+//         ($msg:expr) => {
+//             $crate::TimerInfo
+//         };
+//     }
+//     #[macro_export]
+//     macro_rules! add_to_trace {
+//         ($title:expr, $msg:expr) => {
+//             let _ = $msg;
+//             println!("which trace less {}", line!());
+//         };
+//     }
 
-    #[macro_export]
-    macro_rules! end_timer {
-        ($time:expr, $msg:expr) => {
-            let _ = $msg;
-            let _ = $time;
-        };
-        ($time:expr) => {
-            let _ = $time;
-        };
-    }
-}
+//     #[macro_export]
+//     macro_rules! end_timer {
+//         ($time:expr, $msg:expr) => {
+//             let _ = $msg;
+//             let _ = $time;
+//         };
+//         ($time:expr) => {
+//             let _ = $time;
+//         };
+//     }
+// }
 
 mod tests {
     use super::*;

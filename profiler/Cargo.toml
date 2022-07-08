@@ -19,7 +19,7 @@ edition = "2018"
 
 [dependencies.colored]
 version = "2"
-optional = true
+#optional = true
 
-[features]
-print-trace = [ "colored" ]
+#[features]
+#print-trace = [ "colored" ]
