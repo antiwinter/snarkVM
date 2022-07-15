@@ -247,6 +247,7 @@ impl<E: PairingEngine> PolynomialCommitment<E::Fr, E::Fq> for MarlinKZG10<E> {
 
             let (comm, rand) = kzg10::KZG10::commit(&ck.powers(), polynomial, hiding_bound, terminator, Some(rng), gpu_index)?;
             let (shifted_comm, shifted_rand) = if let Some(degree_bound) = degree_bound {
+                println!("degree bound OOO");
                 let shifted_powers = ck
                     .shifted_powers(degree_bound)
                     .ok_or(Error::UnsupportedDegreeBound(degree_bound))?;
@@ -254,6 +255,7 @@ impl<E: PairingEngine> PolynomialCommitment<E::Fr, E::Fq> for MarlinKZG10<E> {
                     kzg10::KZG10::commit(&shifted_powers, polynomial, hiding_bound, terminator, Some(rng), gpu_index)?;
                 (Some(shifted_comm), Some(shifted_rand))
             } else {
+                println!("degree bound xxx");
                 (None, None)
             };
 

@@ -21,14 +21,11 @@ use crate::{
         indexer::{Circuit, CircuitInfo, Matrix},
         prover::ProverConstraintSystem,
         verifier::{VerifierFirstMessage, VerifierSecondMessage},
-        AHPError,
-        AHPForR1CS,
-        UnnormalizedBivariateLagrangePoly,
+        AHPError, AHPForR1CS, UnnormalizedBivariateLagrangePoly,
     },
     marlin::MarlinMode,
     prover::{state::ProverState, ProverMessage},
-    ToString,
-    Vec,
+    ToString, Vec,
 };
 use snarkvm_algorithms::fft::{EvaluationDomain, Evaluations as EvaluationsOnDomain, SparsePolynomial};
 use snarkvm_fields::{batch_inversion, Field, PrimeField};
@@ -224,10 +221,13 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
 
         let v_H = domain_h.vanishing_polynomial();
 
-        let x_time = start_timer!(|| "Computing x polynomial and evals");
+        let x_time = start_timer!(|| "Computing x ifft");
         let domain_x = state.domain_x;
         let x_poly =
             EvaluationsOnDomain::from_vec_and_domain(state.padded_public_variables.clone(), domain_x).interpolate();
+        end_timer!(x_time);
+
+        let x_time = start_timer!(|| "Computing x fft");
         let x_evals = domain_h.fft(&x_poly);
         end_timer!(x_time);
 
@@ -239,7 +239,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
             domain_h.size() - domain_x.size() - state.private_variables.len()
         ]);
 
-        let w_poly_time = start_timer!(|| "Computing w polynomial");
+        let w_poly_time = start_timer!(|| "Computing w remap");
         let w_poly_evals = cfg_into_iter!(0..domain_h.size())
             .map(|k| {
                 if k % ratio == 0 {
@@ -249,18 +249,20 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                 }
             })
             .collect();
+        end_timer!(w_poly_time);
 
         let mut job_pool = snarkvm_utilities::ExecutionPool::with_capacity(3);
         let w_rand = F::rand(rng);
         job_pool.add_job(|| {
+            let w_poly_time = start_timer!(|| "Computing w polynomial");
+
             let w_poly = &EvaluationsOnDomain::from_vec_and_domain(w_poly_evals, domain_h).interpolate()
                 + &(&v_H * w_rand).into();
             let (w_poly, remainder) = w_poly.divide_by_vanishing_poly(domain_x).unwrap();
             assert!(remainder.is_zero());
+            end_timer!(w_poly_time);
             w_poly
         });
-
-        end_timer!(w_poly_time);
 
         let r_a = F::rand(rng);
         let z_a = state.z_a.clone().unwrap();
@@ -363,7 +365,11 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
 
     /// Output the number of oracles sent by the prover in the first round.
     pub fn prover_num_first_round_oracles() -> usize {
-        if MM::ZK { 4 } else { 3 }
+        if MM::ZK {
+            4
+        } else {
+            3
+        }
     }
 
     /// Output the degree bounds of oracles in the first round.
@@ -396,7 +402,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
             eta_c,
         } = *verifier_message;
 
-        let summed_z_m_poly_time = start_timer!(|| "Compute z_m poly");
+        let summed_z_m_poly_time = start_timer!(|| "Compute z_m prepare");
         let (z_a_poly, z_b_poly) = state.mz_polys.as_ref().unwrap();
         if MM::ZK {
             assert_eq!(z_a_poly.degree(), domain_h.size());
@@ -459,6 +465,8 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         let r_alpha_x_evals_time = start_timer!(|| "Compute r_alpha_x evals");
         let r_alpha_x_evals = domain_h.batch_eval_unnormalized_bivariate_lagrange_poly_with_diff_inputs(alpha);
         end_timer!(r_alpha_x_evals_time);
+        end_timer!(summed_z_m_poly_time);
+
 
         let mut job_pool = snarkvm_utilities::ExecutionPool::with_capacity(2);
         job_pool.add_job(|| {
@@ -466,6 +474,8 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
             // Note: Can't combine these two loops, because z_c_poly has 2x the degree
             // of z_a_poly and z_b_poly, so the second loop gets truncated due to
             // the `zip`s.
+            let summed_z_m_poly_time = start_timer!(|| "Compute z_m poly");
+
             cfg_iter_mut!(summed_z_m_coeffs).for_each(|c| *c *= &eta_c);
             cfg_iter_mut!(summed_z_m_coeffs)
                 .zip(&z_a_poly.polynomial().coeffs)
@@ -511,7 +521,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
 
         end_timer!(z_poly_time);
 
-        let q_1_time = start_timer!(|| "Compute q_1 poly");
+        let q_1_time = start_timer!(|| "q_1 poly eval");
 
         let mul_domain_size = *[
             mask_poly.map_or(0, |p| p.len()),
@@ -539,6 +549,9 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                 *a *= b;
                 *a -= &(c * d);
             });
+        end_timer!(q_1_time);
+
+        let q_1_time = start_timer!(|| "q_1 poly ifft");
         let mut rhs = r_alpha_evals.interpolate();
         rhs += mask_poly.map_or(&Polynomial::zero(), |p| p.polynomial());
         let q_1 = rhs;
@@ -661,6 +674,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         let [a_poly, b_poly]: [_; 2] = job_pool.execute_all().try_into().unwrap();
 
         let f_evals_time = start_timer!(|| "Computing f evals on K");
+        println!("domain_k size {}", domain_k.size());
         let mut inverses: Vec<_> = cfg_into_iter!(0..domain_k.size())
             .map(|i| (beta - row_on_K[i]) * (alpha - col_on_K[i]))
             .collect();

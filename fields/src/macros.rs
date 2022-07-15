@@ -50,6 +50,7 @@ macro_rules! impl_primefield_standard_sample {
         impl<P: $params> rand::distributions::Distribution<$field<P>> for rand::distributions::Standard {
             #[inline]
             fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> $field<P> {
+                let mut c = 0;
                 loop {
                     let mut tmp = $field(rng.sample(rand::distributions::Standard), PhantomData);
                     // Mask away the unused bits at the beginning.
@@ -58,7 +59,14 @@ macro_rules! impl_primefield_standard_sample {
                         .last_mut()
                         .map(|val| *val &= std::u64::MAX >> P::REPR_SHAVE_BITS);
 
+                    println!(
+                        "64max {:x?}, mask {:x?}",
+                        std::u64::MAX,
+                        std::u64::MAX >> P::REPR_SHAVE_BITS
+                    );
+                    c += 1;
                     if tmp.is_valid() {
+                        println!("sample!! valid after {} loops, bits is {}", c, P::REPR_SHAVE_BITS);
                         return tmp;
                     }
                 }

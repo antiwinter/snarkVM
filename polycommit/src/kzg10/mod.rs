@@ -241,7 +241,14 @@ impl<E: PairingEngine> KZG10<E> {
         let (num_leading_zeros, plain_coeffs) = skip_leading_zeros_and_convert_to_bigints(polynomial);
 
         let msm_time = start_timer!(|| "MSM to compute commitment to plaintext poly");
-        let mut commitment = VariableBaseMSM::multi_scalar_mul(&powers.powers_of_g[num_leading_zeros..], &plain_coeffs, gpu_index);
+        let mut commitment =
+            VariableBaseMSM::multi_scalar_mul(&powers.powers_of_g[num_leading_zeros..], &plain_coeffs, gpu_index);
+        println!(
+            "msm done [plain]: {} <> {}, {:?}",
+            &powers.powers_of_g[num_leading_zeros..].len(),
+            plain_coeffs.len(),
+            msm_time.time.elapsed()
+        );
         end_timer!(msm_time);
 
         if terminator.load(Ordering::Relaxed) {
@@ -260,10 +267,21 @@ impl<E: PairingEngine> KZG10<E> {
         }
 
         let random_ints = convert_to_bigints(&randomness.blinding_polynomial.coeffs);
-        let msm_time = start_timer!(|| "MSM to compute commitment to random poly");
+        let msm_time1 = start_timer!(|| "MSM to compute commitment to random poly");
+        println!("length {}", random_ints.len());
+
         let random_commitment =
-            VariableBaseMSM::multi_scalar_mul(&powers.powers_of_gamma_g, random_ints.as_slice(), gpu_index).into_affine();
-        end_timer!(msm_time);
+            VariableBaseMSM::multi_scalar_mul(&powers.powers_of_gamma_g, random_ints.as_slice(), gpu_index)
+                .into_affine();
+        println!(
+            "msm done [randm]: {} <> {}, {:?}, iszero={}",
+            &powers.powers_of_gamma_g.len(),
+            random_ints.as_slice().len(),
+            msm_time1.time.elapsed(),
+            random_commitment.is_zero()
+        );
+
+        end_timer!(msm_time1);
 
         if terminator.load(Ordering::Relaxed) {
             return Err(Error::Terminated);
@@ -318,7 +336,8 @@ impl<E: PairingEngine> KZG10<E> {
         let (num_leading_zeros, witness_coeffs) = skip_leading_zeros_and_convert_to_bigints(witness_polynomial);
 
         let witness_comm_time = start_timer!(|| "Computing commitment to witness polynomial");
-        let mut w = VariableBaseMSM::multi_scalar_mul(&powers.powers_of_g[num_leading_zeros..], &witness_coeffs, gpu_index);
+        let mut w =
+            VariableBaseMSM::multi_scalar_mul(&powers.powers_of_g[num_leading_zeros..], &witness_coeffs, gpu_index);
         end_timer!(witness_comm_time);
 
         let random_v = if let Some(hiding_witness_polynomial) = hiding_witness_polynomial {
@@ -357,8 +376,14 @@ impl<E: PairingEngine> KZG10<E> {
         let (witness_poly, hiding_witness_poly) = Self::compute_witness_polynomial(polynomial, point, rand)?;
         end_timer!(witness_time);
 
-        let proof =
-            Self::open_with_witness_polynomial(powers, point, rand, &witness_poly, hiding_witness_poly.as_ref(), gpu_index);
+        let proof = Self::open_with_witness_polynomial(
+            powers,
+            point,
+            rand,
+            &witness_poly,
+            hiding_witness_poly.as_ref(),
+            gpu_index,
+        );
 
         end_timer!(open_time);
         proof

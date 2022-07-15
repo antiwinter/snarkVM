@@ -48,6 +48,7 @@ impl<F: PrimeField> Evaluations<F> {
             evaluations: mut evals,
             domain,
         } = self;
+        println!("ifft len {}", evals.len());
         domain.ifft_in_place(&mut evals);
         DensePolynomial::from_coefficients_vec(evals)
     }

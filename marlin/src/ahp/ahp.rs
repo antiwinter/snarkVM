@@ -17,9 +17,7 @@
 use crate::{
     ahp::{matrices, prover::ProverConstraintSystem, verifier, AHPError, CircuitInfo},
     marlin::MarlinMode,
-    String,
-    ToString,
-    Vec,
+    String, ToString, Vec,
 };
 use snarkvm_algorithms::fft::EvaluationDomain;
 use snarkvm_fields::{Field, PrimeField};
@@ -228,12 +226,15 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         let mut a = LinearCombination::new("a_poly", vec![(eta_a, "a_val"), (eta_b, "b_val"), (eta_c, "c_val")]);
         a *= v_H_at_alpha * v_H_at_beta;
 
-        let mut b = LinearCombination::new("denom", vec![
-            (beta_alpha, LCTerm::One),
-            (-alpha, "row".into()),
-            (-beta, "col".into()),
-            (F::one(), "row_col".into()),
-        ]);
+        let mut b = LinearCombination::new(
+            "denom",
+            vec![
+                (beta_alpha, LCTerm::One),
+                (-alpha, "row".into()),
+                (-beta, "col".into()),
+                (F::one(), "row_col".into()),
+            ],
+        );
         b *= gamma * g_2_at_gamma + (t_at_beta / k_size);
 
         let mut inner_sumcheck = a;
@@ -328,6 +329,7 @@ impl<F: PrimeField> UnnormalizedBivariateLagrangePoly<F> for EvaluationDomain<F>
     fn batch_eval_unnormalized_bivariate_lagrange_poly_with_diff_inputs(&self, x: F) -> Vec<F> {
         let vanish_x = self.evaluate_vanishing_polynomial(x);
         let mut inverses: Vec<F> = self.elements().map(|y| x - y).collect();
+        let n = inverses.len(); // n = 32768
         snarkvm_fields::batch_inversion_and_mul(&mut inverses, &vanish_x);
         inverses
     }

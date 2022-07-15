@@ -94,6 +94,15 @@ pub fn msm_standard<G: AffineCurve>(
 
     let num_bits = <G::ScalarField as PrimeField>::Parameters::MODULUS_BITS as usize;
 
+    println!(
+        "msm!! points={} scalars={}, scalar_bits={}, chunk-bits={}, windows={}",
+        bases.len(),
+        scalars.len(),
+        num_bits,
+        c,
+        num_bits / c
+    );
+
     // Each window is of size `c`.
     // We divide up the bits 0..num_bits into windows of size `c`, and
     // in parallel process each such window.
@@ -111,6 +120,9 @@ pub fn msm_standard<G: AffineCurve>(
         .iter()
         .rev()
         .fold(G::Projective::zero(), |mut total, sum_i| {
+            if sum_i.is_zero() {
+                println!("window empty");
+            }
             total += sum_i;
             for _ in 0..c {
                 total.double_in_place();
