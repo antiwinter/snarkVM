@@ -15,24 +15,13 @@
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{
-    impl_add_sub_from_field_ref,
-    impl_mul_div_from_field_ref,
-    FftField,
-    Field,
-    FieldError,
-    FieldParameters,
-    LegendreSymbol,
-    One,
-    PrimeField,
-    SquareRootField,
-    Zero,
+    impl_add_sub_from_field_ref, impl_mul_div_from_field_ref, FftField, Field, FieldError, FieldParameters,
+    LegendreSymbol, One, PrimeField, SquareRootField, Zero,
 };
 use snarkvm_utilities::{
     biginteger::{arithmetic as fa, BigInteger as _BigInteger, BigInteger384 as BigInteger},
     serialize::CanonicalDeserialize,
-    FromBytes,
-    ToBits,
-    ToBytes,
+    FromBytes, ToBits, ToBytes,
 };
 
 use std::{
@@ -331,7 +320,11 @@ impl<P: Fp384Parameters> Field for Fp384<P> {
                 }
             }
 
-            if u == one { Some(b) } else { Some(c) }
+            if u == one {
+                Some(b)
+            } else {
+                Some(c)
+            }
         }
     }
 
@@ -390,7 +383,11 @@ impl<P: Fp384Parameters> PrimeField for Fp384<P> {
     #[inline]
     fn from_repr_unchecked(r: BigInteger) -> Self {
         let r = Fp384(r, PhantomData);
-        if r.is_valid() { r } else { Self::zero() }
+        if r.is_valid() {
+            r
+        } else {
+            Self::zero()
+        }
     }
 
     #[inline]
@@ -671,6 +668,7 @@ impl<'a, P: Fp384Parameters> MulAssign<&'a Self> for Fp384<P> {
         let r5 = fa::mac_with_carry(r5, (self.0).0[1], (other.0).0[4], &mut carry);
         let r6 = fa::mac_with_carry(r6, (self.0).0[1], (other.0).0[5], &mut carry);
         let r7 = carry;
+
         let mut carry = 0;
         let r2 = fa::mac_with_carry(r2, (self.0).0[2], (other.0).0[0], &mut carry);
         let r3 = fa::mac_with_carry(r3, (self.0).0[2], (other.0).0[1], &mut carry);
@@ -679,6 +677,7 @@ impl<'a, P: Fp384Parameters> MulAssign<&'a Self> for Fp384<P> {
         let r6 = fa::mac_with_carry(r6, (self.0).0[2], (other.0).0[4], &mut carry);
         let r7 = fa::mac_with_carry(r7, (self.0).0[2], (other.0).0[5], &mut carry);
         let r8 = carry;
+
         let mut carry = 0;
         let r3 = fa::mac_with_carry(r3, (self.0).0[3], (other.0).0[0], &mut carry);
         let r4 = fa::mac_with_carry(r4, (self.0).0[3], (other.0).0[1], &mut carry);
@@ -687,6 +686,7 @@ impl<'a, P: Fp384Parameters> MulAssign<&'a Self> for Fp384<P> {
         let r7 = fa::mac_with_carry(r7, (self.0).0[3], (other.0).0[4], &mut carry);
         let r8 = fa::mac_with_carry(r8, (self.0).0[3], (other.0).0[5], &mut carry);
         let r9 = carry;
+
         let mut carry = 0;
         let r4 = fa::mac_with_carry(r4, (self.0).0[4], (other.0).0[0], &mut carry);
         let r5 = fa::mac_with_carry(r5, (self.0).0[4], (other.0).0[1], &mut carry);
@@ -695,6 +695,7 @@ impl<'a, P: Fp384Parameters> MulAssign<&'a Self> for Fp384<P> {
         let r8 = fa::mac_with_carry(r8, (self.0).0[4], (other.0).0[4], &mut carry);
         let r9 = fa::mac_with_carry(r9, (self.0).0[4], (other.0).0[5], &mut carry);
         let r10 = carry;
+
         let mut carry = 0;
         let r5 = fa::mac_with_carry(r5, (self.0).0[5], (other.0).0[0], &mut carry);
         let r6 = fa::mac_with_carry(r6, (self.0).0[5], (other.0).0[1], &mut carry);
@@ -703,6 +704,7 @@ impl<'a, P: Fp384Parameters> MulAssign<&'a Self> for Fp384<P> {
         let r9 = fa::mac_with_carry(r9, (self.0).0[5], (other.0).0[4], &mut carry);
         let r10 = fa::mac_with_carry(r10, (self.0).0[5], (other.0).0[5], &mut carry);
         let r11 = carry;
+
         self.mont_reduce(r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11);
     }
 }
