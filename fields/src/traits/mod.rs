@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
+pub use num_traits::One;
+
 mod fft_field;
 pub use fft_field::*;
 
@@ -26,8 +28,11 @@ pub use field::*;
 mod field_parameters;
 pub use field_parameters::*;
 
-mod one;
-pub use one::*;
+mod poseidon_grain_lfsr;
+pub use poseidon_grain_lfsr::*;
+
+mod poseidon_default;
+pub use poseidon_default::*;
 
 mod prime_field;
 pub use prime_field::*;
@@ -40,6 +45,3 @@ pub use to_constraint_field::*;
 
 mod zero;
 pub use zero::*;
-
-mod poseidon_default_parameters;
-pub use poseidon_default_parameters::*;

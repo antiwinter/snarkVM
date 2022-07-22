@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,15 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-use snarkvm_algorithms::{
-    CRHError,
-    CommitmentError,
-    EncryptionError,
-    MerkleError,
-    PRFError,
-    SNARKError,
-    SignatureError,
-};
+use snarkvm_algorithms::{CRHError, MerkleError, SNARKError};
 use snarkvm_fields::ConstraintFieldError;
 use snarkvm_parameters::ParameterError;
 
@@ -47,9 +39,6 @@ pub enum VMError {
     CannotVerifyCommitment,
 
     #[error("{}", _0)]
-    CommitmentError(#[from] CommitmentError),
-
-    #[error("{}", _0)]
     ConstraintFieldError(#[from] ConstraintFieldError),
 
     #[error("{}: {}", _0, _1)]
@@ -57,9 +46,6 @@ pub enum VMError {
 
     #[error("{}", _0)]
     CRHError(#[from] CRHError),
-
-    #[error("{}", _0)]
-    EncryptionError(#[from] EncryptionError),
 
     #[error("{}", _0)]
     FromHexError(#[from] hex::FromHexError),
@@ -75,12 +61,6 @@ pub enum VMError {
 
     #[error("{}", _0)]
     ParameterError(#[from] ParameterError),
-
-    #[error("{}", _0)]
-    PRFError(#[from] PRFError),
-
-    #[error("{}", _0)]
-    SignatureError(#[from] SignatureError),
 
     #[error("{}", _0)]
     SNARKError(#[from] SNARKError),

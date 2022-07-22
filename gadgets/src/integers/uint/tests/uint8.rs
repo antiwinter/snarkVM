@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,11 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-use rand::{Rng, SeedableRng};
-use rand_xorshift::XorShiftRng;
+use rand::Rng;
 
 use snarkvm_fields::{One, Zero};
 use snarkvm_r1cs::{ConstraintSystem, Fr, TestConstraintSystem};
+use snarkvm_utilities::rand::test_rng;
 
 use crate::{
     bits::Boolean,
@@ -82,7 +82,7 @@ fn test_uint8_alloc_input_vec() {
 
 #[test]
 fn test_uint8_from_bits() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         let v = (0..8).map(|_| Boolean::constant(rng.gen())).collect::<Vec<_>>();
@@ -112,7 +112,7 @@ fn test_uint8_from_bits() {
 
 #[test]
 fn test_uint8_rotr() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     let mut num = rng.gen();
 
@@ -141,7 +141,7 @@ fn test_uint8_rotr() {
 
 #[test]
 fn test_uint8_xor() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         let mut cs = TestConstraintSystem::<Fr>::new();
@@ -183,7 +183,7 @@ fn test_uint8_xor() {
 
 #[test]
 fn test_uint8_addmany_constants() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         let mut cs = TestConstraintSystem::<Fr>::new();
@@ -209,7 +209,7 @@ fn test_uint8_addmany_constants() {
 #[test]
 #[allow(clippy::many_single_char_names)]
 fn test_uint8_addmany() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         let mut cs = TestConstraintSystem::<Fr>::new();
@@ -248,7 +248,7 @@ fn test_uint8_addmany() {
 
 #[test]
 fn test_uint8_sub_constants() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         let mut cs = TestConstraintSystem::<Fr>::new();
@@ -271,7 +271,7 @@ fn test_uint8_sub_constants() {
 
 #[test]
 fn test_uint8_sub() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         let mut cs = TestConstraintSystem::<Fr>::new();
@@ -282,11 +282,8 @@ fn test_uint8_sub() {
         let expected = a.wrapping_sub(b);
 
         let a_bit = UInt8::alloc(cs.ns(|| "a_bit"), || Ok(a)).unwrap();
-        let b_bit = if b > u8::MAX / 4 {
-            UInt8::constant(b)
-        } else {
-            UInt8::alloc(cs.ns(|| "b_bit"), || Ok(b)).unwrap()
-        };
+        let b_bit =
+            if b > u8::MAX / 4 { UInt8::constant(b) } else { UInt8::alloc(cs.ns(|| "b_bit"), || Ok(b)).unwrap() };
 
         let r = a_bit.sub(cs.ns(|| "subtraction"), &b_bit).unwrap();
 
@@ -309,7 +306,7 @@ fn test_uint8_sub() {
 
 #[test]
 fn test_uint8_mul_constants() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         let mut cs = TestConstraintSystem::<Fr>::new();
@@ -332,7 +329,7 @@ fn test_uint8_mul_constants() {
 
 #[test]
 fn test_uint8_mul() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         let mut cs = TestConstraintSystem::<Fr>::new();
@@ -343,11 +340,8 @@ fn test_uint8_mul() {
         let expected = a.wrapping_mul(b);
 
         let a_bit = UInt8::alloc(cs.ns(|| "a_bit"), || Ok(a)).unwrap();
-        let b_bit = if b > u8::MAX / 2 {
-            UInt8::constant(b)
-        } else {
-            UInt8::alloc(cs.ns(|| "b_bit"), || Ok(b)).unwrap()
-        };
+        let b_bit =
+            if b > u8::MAX / 2 { UInt8::constant(b) } else { UInt8::alloc(cs.ns(|| "b_bit"), || Ok(b)).unwrap() };
 
         let r = a_bit.mul(cs.ns(|| "multiplication"), &b_bit).unwrap();
 
@@ -358,16 +352,10 @@ fn test_uint8_mul() {
         check_all_allocated_bits(expected, r);
 
         // Flip a bit_gadget and see if the multiplication constraint still works
-        if cs
-            .get("multiplication/partial_products/result bit_gadget 0/boolean")
-            .is_zero()
-        {
+        if cs.get("multiplication/partial_products/result bit_gadget 0/boolean").is_zero() {
             cs.set("multiplication/partial_products/result bit_gadget 0/boolean", Fr::one());
         } else {
-            cs.set(
-                "multiplication/partial_products/result bit_gadget 0/boolean",
-                Fr::zero(),
-            );
+            cs.set("multiplication/partial_products/result bit_gadget 0/boolean", Fr::zero());
         }
 
         assert!(!cs.is_satisfied());
@@ -376,7 +364,7 @@ fn test_uint8_mul() {
 
 #[test]
 fn test_uint8_div_constants() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         let mut cs = TestConstraintSystem::<Fr>::new();
@@ -399,7 +387,7 @@ fn test_uint8_div_constants() {
 
 #[test]
 fn test_uint8_div() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..100 {
         let mut cs = TestConstraintSystem::<Fr>::new();
@@ -410,11 +398,8 @@ fn test_uint8_div() {
         let expected = a.wrapping_div(b);
 
         let a_bit = UInt8::alloc(cs.ns(|| "a_bit"), || Ok(a)).unwrap();
-        let b_bit = if b > u8::MAX / 2 {
-            UInt8::constant(b)
-        } else {
-            UInt8::alloc(cs.ns(|| "b_bit"), || Ok(b)).unwrap()
-        };
+        let b_bit =
+            if b > u8::MAX / 2 { UInt8::constant(b) } else { UInt8::alloc(cs.ns(|| "b_bit"), || Ok(b)).unwrap() };
 
         let r = a_bit.div(cs.ns(|| "division"), &b_bit).unwrap();
 
@@ -425,10 +410,7 @@ fn test_uint8_div() {
         check_all_allocated_bits(expected, r);
 
         // Flip a bit_gadget and see if the division constraint still works
-        if cs
-            .get("division/r_sub_d_result_0/allocated bit_gadget 0/boolean")
-            .is_zero()
-        {
+        if cs.get("division/r_sub_d_result_0/allocated bit_gadget 0/boolean").is_zero() {
             cs.set("division/r_sub_d_result_0/allocated bit_gadget 0/boolean", Fr::one());
         } else {
             cs.set("division/r_sub_d_result_0/allocated bit_gadget 0/boolean", Fr::zero());
@@ -440,7 +422,7 @@ fn test_uint8_div() {
 
 #[test]
 fn test_uint8_pow_constants() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         let mut cs = TestConstraintSystem::<Fr>::new();
@@ -463,7 +445,7 @@ fn test_uint8_pow_constants() {
 
 #[test]
 fn test_uint8_pow() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..100 {
         let mut cs = TestConstraintSystem::<Fr>::new();
@@ -474,11 +456,8 @@ fn test_uint8_pow() {
         let expected = a.wrapping_pow(b.into());
 
         let a_bit = UInt8::alloc(cs.ns(|| "a_bit"), || Ok(a)).unwrap();
-        let b_bit = if b > u8::MAX / 2 {
-            UInt8::constant(b)
-        } else {
-            UInt8::alloc(cs.ns(|| "b_bit"), || Ok(b)).unwrap()
-        };
+        let b_bit =
+            if b > u8::MAX / 2 { UInt8::constant(b) } else { UInt8::alloc(cs.ns(|| "b_bit"), || Ok(b)).unwrap() };
 
         let r = a_bit.pow(cs.ns(|| "exponentiation"), &b_bit).unwrap();
 
@@ -489,19 +468,10 @@ fn test_uint8_pow() {
         check_all_allocated_bits(expected, r);
 
         // Flip a bit_gadget and see if the exponentiation constraint still works
-        if cs
-            .get("exponentiation/multiply_by_self_0/partial_products/result bit_gadget 0/boolean")
-            .is_zero()
-        {
-            cs.set(
-                "exponentiation/multiply_by_self_0/partial_products/result bit_gadget 0/boolean",
-                Fr::one(),
-            );
+        if cs.get("exponentiation/multiply_by_self_0/partial_products/result bit_gadget 0/boolean").is_zero() {
+            cs.set("exponentiation/multiply_by_self_0/partial_products/result bit_gadget 0/boolean", Fr::one());
         } else {
-            cs.set(
-                "exponentiation/multiply_by_self_0/partial_products/result bit_gadget 0/boolean",
-                Fr::zero(),
-            );
+            cs.set("exponentiation/multiply_by_self_0/partial_products/result bit_gadget 0/boolean", Fr::zero());
         }
 
         assert!(!cs.is_satisfied());

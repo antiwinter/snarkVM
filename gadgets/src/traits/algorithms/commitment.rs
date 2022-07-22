@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -29,6 +29,7 @@ use crate::{
         select::CondSelectGadget,
     },
     ToBitsBEGadget,
+    ToBitsLEGadget,
 };
 
 pub trait CommitmentGadget<C: CommitmentScheme, F: Field>: AllocGadget<C, F> + Clone + Sized {
@@ -41,7 +42,7 @@ pub trait CommitmentGadget<C: CommitmentScheme, F: Field>: AllocGadget<C, F> + C
         + Clone
         + Sized
         + Debug;
-    type RandomnessGadget: AllocGadget<C::Randomness, F> + ToBytesGadget<F> + Clone;
+    type RandomnessGadget: AllocGadget<C::Randomness, F> + ToBytesGadget<F> + ToBitsLEGadget<F> + Clone;
 
     fn randomness_from_bytes<CS: ConstraintSystem<F>>(
         cs: CS,

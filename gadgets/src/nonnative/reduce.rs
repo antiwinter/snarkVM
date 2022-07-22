@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,29 +14,25 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{cmp::min, marker::PhantomData, vec, vec::Vec};
-
-use num_bigint::BigUint;
-use num_integer::Integer;
-use num_traits::identities::{One, Zero};
-
 use crate::{
     bits::Boolean,
     fields::FpGadget,
+    nonnative::AllocatedNonNativeFieldVar,
     traits::{
         alloc::AllocGadget,
         eq::{ConditionalEqGadget, EqGadget},
         fields::FieldGadget,
     },
 };
+use snarkvm_algorithms::{overhead, snark::marlin::params::get_params};
 use snarkvm_fields::{FieldParameters, PrimeField};
 use snarkvm_r1cs::{errors::SynthesisError, ConstraintSystem};
 use snarkvm_utilities::{BigInteger, BitIteratorBE, ToBits};
 
-use crate::{
-    nonnative::{params::get_params, AllocatedNonNativeFieldVar},
-    overhead,
-};
+use core::{cmp::min, marker::PhantomData};
+use num_bigint::BigUint;
+use num_integer::Integer;
+use num_traits::identities::{One, Zero};
 
 const fn num_bits<T>() -> usize {
     std::mem::size_of::<T>() * 8
@@ -160,11 +156,8 @@ impl<TargetField: PrimeField, BaseField: PrimeField> Reducer<TargetField, BaseFi
         cs: &mut CS,
         elem: &mut AllocatedNonNativeFieldVar<TargetField, BaseField>,
     ) -> Result<(), SynthesisError> {
-        let field_parameters = get_params(
-            TargetField::size_in_bits(),
-            BaseField::size_in_bits(),
-            elem.get_optimization_type(),
-        );
+        let field_parameters =
+            get_params(TargetField::size_in_bits(), BaseField::size_in_bits(), elem.get_optimization_type());
         let surfeit = overhead!(elem.num_of_additions_over_normal_form + BaseField::one()) + 1;
 
         if BaseField::size_in_bits() > 2 * field_parameters.bits_per_limb + surfeit + 1 {
@@ -182,11 +175,8 @@ impl<TargetField: PrimeField, BaseField: PrimeField> Reducer<TargetField, BaseFi
     ) -> Result<(), SynthesisError> {
         assert_eq!(elem.get_optimization_type(), elem_other.get_optimization_type());
 
-        let field_parameters = get_params(
-            TargetField::size_in_bits(),
-            BaseField::size_in_bits(),
-            elem.get_optimization_type(),
-        );
+        let field_parameters =
+            get_params(TargetField::size_in_bits(), BaseField::size_in_bits(), elem.get_optimization_type());
 
         if 2 * field_parameters.bits_per_limb + log_2(field_parameters.num_limbs) as usize
             > BaseField::size_in_bits() - 1

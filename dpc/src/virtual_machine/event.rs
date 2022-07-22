@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{Network, Operation};
-use snarkvm_utilities::{FromBytes, FromBytesDeserializer, ToBytes, ToBytesSerializer};
+use snarkvm_utilities::{error, FromBytes, FromBytesDeserializer, ToBytes, ToBytesSerializer};
 
 use serde::{de, ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
 use std::{
@@ -63,7 +63,7 @@ impl<N: Network> FromBytes for Event<N> {
                 Ok(Self::RecordViewKey(index, record_view_key))
             }
             2 => Ok(Self::Operation(FromBytes::read_le(&mut reader)?)),
-            _ => unreachable!("Invalid event ID during deserialization"),
+            3.. => Err(error("Invalid event ID during deserialization")),
         }
     }
 }
@@ -96,11 +96,7 @@ impl<N: Network> FromStr for Event<N> {
 
 impl<N: Network> fmt::Display for Event<N> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            serde_json::to_string(self).map_err::<fmt::Error, _>(serde::ser::Error::custom)?
-        )
+        write!(f, "{}", serde_json::to_string(self).map_err::<fmt::Error, _>(serde::ser::Error::custom)?)
     }
 }
 
@@ -153,7 +149,7 @@ impl<'de, N: Network> Deserialize<'de> for Event<N> {
                     2 => Ok(Self::Operation(
                         serde_json::from_value(event["operation"].clone()).map_err(de::Error::custom)?,
                     )),
-                    _ => unreachable!(format!("Invalid event id {}", event_id)),
+                    3.. => Err(error("Invalid event ID during deserialization")).map_err(de::Error::custom),
                 }
             }
             false => FromBytesDeserializer::<Self>::deserialize_with_size_encoding(deserializer, "event"),

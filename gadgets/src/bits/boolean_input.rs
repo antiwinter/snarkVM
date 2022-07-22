@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -31,7 +31,6 @@ use crate::{
 use snarkvm_utilities::ops::Neg;
 
 /// Conversion of field elements by converting them to boolean sequences
-/// Used by Groth16 and Gm17
 #[derive(Clone)]
 pub struct BooleanInputGadget<F: PrimeField, CF: PrimeField> {
     pub val: Vec<Vec<Boolean>>,
@@ -41,11 +40,7 @@ pub struct BooleanInputGadget<F: PrimeField, CF: PrimeField> {
 
 impl<F: PrimeField, CF: PrimeField> BooleanInputGadget<F, CF> {
     pub fn new(val: Vec<Vec<Boolean>>) -> Self {
-        Self {
-            val,
-            _snark_field: PhantomData,
-            _constraint_field: PhantomData,
-        }
+        Self { val, _snark_field: PhantomData, _constraint_field: PhantomData }
     }
 }
 
@@ -73,20 +68,14 @@ impl<F: PrimeField, CF: PrimeField> AllocGadget<Vec<F>, CF> for BooleanInputGadg
 
             let mut booleans = Vec::<Boolean>::new();
             for (j, bit) in bits.iter().enumerate() {
-                booleans.push(Boolean::alloc_constant(
-                    cs.ns(|| format!("alloc_constant_bit_{}_{}", i, j)),
-                    || Ok(*bit),
-                )?);
+                booleans
+                    .push(Boolean::alloc_constant(cs.ns(|| format!("alloc_constant_bit_{}_{}", i, j)), || Ok(*bit))?);
             }
 
             res.push(booleans);
         }
 
-        Ok(Self {
-            val: res,
-            _snark_field: PhantomData,
-            _constraint_field: PhantomData,
-        })
+        Ok(Self { val: res, _snark_field: PhantomData, _constraint_field: PhantomData })
     }
 
     fn alloc<Fn: FnOnce() -> Result<T, SynthesisError>, T: Borrow<Vec<F>>, CS: ConstraintSystem<CF>>(
@@ -111,7 +100,7 @@ impl<F: PrimeField, CF: PrimeField> AllocGadget<Vec<F>, CF> for BooleanInputGadg
         // Step 3: allocate the CF field elements as input
         let mut src_booleans = Vec::<Boolean>::with_capacity(src_bits.len());
         for (i, chunk) in src_bits.chunks(capacity as usize).enumerate() {
-            let elem = CF::from_repr(<CF as PrimeField>::BigInteger::from_bits_le(chunk)).unwrap();
+            let elem = CF::from_repr(<CF as PrimeField>::BigInteger::from_bits_le(chunk).unwrap()).unwrap();
 
             let elem_gadget = FpGadget::<CF>::alloc(cs.ns(|| format!("alloc_elem_{}", i)), || Ok(elem))?;
 
@@ -132,16 +121,9 @@ impl<F: PrimeField, CF: PrimeField> AllocGadget<Vec<F>, CF> for BooleanInputGadg
         }
 
         // Step 4: unpack them back to bits
-        let res = src_booleans
-            .chunks(F::size_in_bits())
-            .map(|f| f.to_vec())
-            .collect::<Vec<Vec<Boolean>>>();
+        let res = src_booleans.chunks(F::size_in_bits()).map(|f| f.to_vec()).collect::<Vec<Vec<Boolean>>>();
 
-        Ok(Self {
-            val: res,
-            _snark_field: PhantomData,
-            _constraint_field: PhantomData,
-        })
+        Ok(Self { val: res, _snark_field: PhantomData, _constraint_field: PhantomData })
     }
 
     fn alloc_input<Fn: FnOnce() -> Result<T, SynthesisError>, T: Borrow<Vec<F>>, CS: ConstraintSystem<CF>>(
@@ -166,7 +148,7 @@ impl<F: PrimeField, CF: PrimeField> AllocGadget<Vec<F>, CF> for BooleanInputGadg
         // Step 3: allocate the CF field elements as input
         let mut src_booleans = Vec::<Boolean>::with_capacity(src_bits.len());
         for (i, chunk) in src_bits.chunks(capacity as usize).enumerate() {
-            let elem = CF::from_repr(<CF as PrimeField>::BigInteger::from_bits_le(chunk)).unwrap();
+            let elem = CF::from_repr(<CF as PrimeField>::BigInteger::from_bits_le(chunk).unwrap()).unwrap();
 
             let elem_gadget = FpGadget::<CF>::alloc_input(cs.ns(|| format!("alloc_elem_{}", i)), || Ok(elem))?;
 
@@ -187,16 +169,9 @@ impl<F: PrimeField, CF: PrimeField> AllocGadget<Vec<F>, CF> for BooleanInputGadg
         }
 
         // Step 4: unpack them back to bits
-        let res = src_booleans
-            .chunks(F::size_in_bits())
-            .map(|f| f.to_vec())
-            .collect::<Vec<Vec<Boolean>>>();
+        let res = src_booleans.chunks(F::size_in_bits()).map(|f| f.to_vec()).collect::<Vec<Vec<Boolean>>>();
 
-        Ok(Self {
-            val: res,
-            _snark_field: PhantomData,
-            _constraint_field: PhantomData,
-        })
+        Ok(Self { val: res, _snark_field: PhantomData, _constraint_field: PhantomData })
     }
 }
 
@@ -234,13 +209,9 @@ impl<F: PrimeField, CF: PrimeField> FromFieldElementsGadget<F, CF> for BooleanIn
                 }
             }
 
-            if fr_not_smaller_than_fq {
-                F::size_in_bits()
-            } else {
-                F::size_in_bits() - 1
-            }
+            if fr_not_smaller_than_fq { F::size_in_bits() } else { F::size_in_data_bits() }
         } else {
-            F::size_in_bits() - 1
+            F::size_in_data_bits()
         };
 
         // Step 3: group them based on the used capacity of F
@@ -252,11 +223,7 @@ impl<F: PrimeField, CF: PrimeField> FromFieldElementsGadget<F, CF> for BooleanIn
                 res
             })
             .collect::<Vec<Vec<Boolean>>>();
-        Ok(Self {
-            val: res,
-            _snark_field: PhantomData,
-            _constraint_field: PhantomData,
-        })
+        Ok(Self { val: res, _snark_field: PhantomData, _constraint_field: PhantomData })
     }
 }
 
@@ -266,11 +233,7 @@ impl<F: PrimeField, CF: PrimeField> MergeGadget<CF> for BooleanInputGadget<F, CF
         elems.extend_from_slice(&self.val);
         elems.extend_from_slice(&other.val);
 
-        Ok(Self {
-            val: elems,
-            _snark_field: PhantomData,
-            _constraint_field: PhantomData,
-        })
+        Ok(Self { val: elems, _snark_field: PhantomData, _constraint_field: PhantomData })
     }
 
     fn merge_in_place<CS: ConstraintSystem<CF>>(&mut self, _cs: CS, other: &Self) -> Result<(), SynthesisError> {
@@ -300,7 +263,7 @@ mod test {
     use snarkvm_fields::PrimeField;
     use snarkvm_r1cs::{Fr, TestConstraintSystem};
     use snarkvm_utilities::{
-        rand::{test_rng, UniformRand},
+        rand::{test_rng, Uniform},
         to_bytes_le,
         ToBytes,
     };
@@ -371,9 +334,7 @@ mod test {
 
         for (i, (expected_bits, bits)) in expected_fe_bits.iter().zip(fe_bits.val.iter()).enumerate() {
             for (j, (expected_bit, bit)) in expected_bits.iter().zip(bits.iter()).enumerate() {
-                expected_bit
-                    .enforce_equal(cs.ns(|| format!("enforce_equal_bit_{}_{}", i, j)), bit)
-                    .unwrap();
+                expected_bit.enforce_equal(cs.ns(|| format!("enforce_equal_bit_{}_{}", i, j)), bit).unwrap();
             }
         }
 

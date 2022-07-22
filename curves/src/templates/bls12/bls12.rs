@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -15,11 +15,15 @@
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{
-    templates::bls12::{
-        g1::{G1Affine, G1Prepared, G1Projective},
-        g2::{G2Affine, G2Prepared, G2Projective},
+    templates::{
+        bls12::{
+            g1::{G1Affine, G1Prepared, G1Projective},
+            g2::{G2Affine, G2Prepared, G2Projective},
+        },
+        short_weierstrass_jacobian,
     },
     traits::{ModelParameters, PairingCurve, PairingEngine, ShortWeierstrassParameters},
+    AffineCurve,
 };
 use serde::{Deserialize, Serialize};
 use snarkvm_fields::{
@@ -32,6 +36,7 @@ use snarkvm_fields::{
     One,
     PrimeField,
     SquareRootField,
+    Zero,
 };
 use snarkvm_utilities::bititerator::BitIteratorBE;
 
@@ -55,6 +60,14 @@ pub trait Bls12Parameters: 'static {
         BaseField = Fp2<Self::Fp2Params>,
         ScalarField = <Self::G1Parameters as ModelParameters>::ScalarField,
     >;
+
+    fn g1_is_in_correct_subgroup(p: &short_weierstrass_jacobian::Affine<Self::G1Parameters>) -> bool {
+        p.mul_bits(BitIteratorBE::new(<Self::G1Parameters as ModelParameters>::ScalarField::characteristic())).is_zero()
+    }
+
+    fn g2_is_in_correct_subgroup(p: &short_weierstrass_jacobian::Affine<Self::G1Parameters>) -> bool {
+        p.mul_bits(BitIteratorBE::new(<Self::G1Parameters as ModelParameters>::ScalarField::characteristic())).is_zero()
+    }
 }
 
 #[derive(Derivative, Serialize, Deserialize)]
@@ -124,10 +137,7 @@ where
     fn miller_loop<'a, I>(i: I) -> Self::Fqk
     where
         I: Iterator<
-            Item = (
-                &'a <Self::G1Affine as PairingCurve>::Prepared,
-                &'a <Self::G2Affine as PairingCurve>::Prepared,
-            ),
+            Item = (&'a <Self::G1Affine as PairingCurve>::Prepared, &'a <Self::G2Affine as PairingCurve>::Prepared),
         >,
     {
         let mut pairs = vec![];

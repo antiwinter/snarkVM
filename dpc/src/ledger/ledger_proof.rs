@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -22,8 +22,7 @@ use anyhow::{anyhow, Result};
 use std::io::{Read, Result as IoResult, Write};
 
 /// A ledger proof of inclusion.
-#[derive(Derivative)]
-#[derivative(Clone(bound = "N: Network"), Debug(bound = "N: Network"))]
+#[derive(Clone, Debug)]
 pub struct LedgerProof<N: Network> {
     ledger_root: N::LedgerRoot,
     ledger_root_inclusion_proof: MerklePath<N::LedgerRootParameters>,
@@ -48,19 +47,12 @@ impl<N: Network> LedgerProof<N> {
             ));
         }
 
-        Ok(Self {
-            ledger_root,
-            ledger_root_inclusion_proof,
-            record_proof,
-        })
+        Ok(Self { ledger_root, ledger_root_inclusion_proof, record_proof })
     }
 
     /// Create a new dummy ledger proof.
     pub fn new_dummy(local_proof: LocalProof<N>) -> Result<Self> {
-        Ok(Self {
-            record_proof: RecordProof::new_dummy(local_proof)?,
-            ..Default::default()
-        })
+        Ok(Self { record_proof: RecordProof::new_dummy(local_proof)?, ..Default::default() })
     }
 
     /// Returns the ledger root used to prove inclusion of ledger-consumed records.

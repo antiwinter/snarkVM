@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,21 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-use snarkvm_algorithms::{crh::sha256::sha256, CRH, SNARK, SRS};
-use snarkvm_dpc::{
-    Execution,
-    Function,
-    InnerCircuit,
-    Network,
-    Noop,
-    NoopPrivateVariables,
-    OuterCircuit,
-    PoSWScheme,
-    ProgramPrivateVariables,
-    ProgramPublicVariables,
-    SynthesizedCircuit,
+use snarkvm_algorithms::{
+    crypto_hash::sha256::sha256,
+    snark::marlin::{ahp::AHPForR1CS, MarlinHidingMode},
+    CRH,
+    SNARK,
+    SRS,
 };
-use snarkvm_marlin::{ahp::AHPForR1CS, marlin::MarlinTestnet1Mode};
+use snarkvm_dpc::{InputCircuit, Network, OutputCircuit, PoSWScheme};
 use snarkvm_utilities::{FromBytes, ToBytes, ToMinimalBits};
 
 use anyhow::Result;
@@ -36,7 +29,7 @@ use rand::{prelude::ThreadRng, thread_rng};
 use serde_json::{json, Value};
 use std::{
     fs::File,
-    io::{BufWriter, Write},
+    io::{BufWriter, Read, Write},
     path::PathBuf,
 };
 
@@ -72,157 +65,84 @@ fn write_metadata(filename: &str, metadata: &Value) -> Result<()> {
     Ok(())
 }
 
-/// Runs a universal SRS setup.
-pub fn universal_setup<N: Network>() -> Result<()> {
-    const UNIVERSAL_METADATA: &str = "universal.metadata";
-    const UNIVERSAL_SRS: &str = "universal.srs";
+pub fn kzg_powers_metadata() {
+    for i in 16..=28 {
+        let degree_file_name = format!("powers_of_g_{}", i);
+        let degree_metadata = format!("powers_of_g_{}_metadata", i);
+        let mut degree_file = File::open(degree_file_name).unwrap();
+        let degree_file_size = degree_file.metadata().unwrap().len() as usize;
+        let mut degree_file_bytes = Vec::with_capacity(degree_file_size);
+        degree_file.read_to_end(&mut degree_file_bytes).unwrap();
+        let checksum = checksum(&degree_file_bytes);
 
-    let max_degree =
-        AHPForR1CS::<<N as Network>::InnerScalarField, MarlinTestnet1Mode>::max_degree(2000000, 4000000, 8000000)
-            .unwrap();
-    let universal_srs = <<N as Network>::ProgramSNARK as SNARK>::universal_setup(&max_degree, &mut thread_rng())?;
-    let universal_srs = universal_srs.to_bytes_le()?;
+        let metadata = json!({
+            "degree": i as usize,
+            "checksum": checksum,
+            "size": degree_file_size,
+        });
 
-    let universal_checksum = checksum(&universal_srs);
-    let universal_metadata = json!({
-        "srs_checksum": universal_checksum,
-        "srs_size": universal_srs.len()
+        write_metadata(&degree_metadata, &metadata).unwrap();
+    }
+}
+
+/// Runs the input circuit setup.
+pub fn input_setup<N: Network>() -> Result<()> {
+    const INPUT_CIRCUIT_METADATA: &str = "input.metadata";
+    const INPUT_PROVING_KEY: &str = "input.proving";
+    const INPUT_VERIFYING_KEY: &str = "input.verifying";
+
+    let (input_proving_key, input_verifying_key) =
+        N::InputSNARK::setup(&InputCircuit::<N>::blank(), &mut SRS::CircuitSpecific(&mut thread_rng()))?;
+
+    let input_circuit_id =
+        hex::encode(N::input_circuit_id_crh().hash(&input_verifying_key.to_minimal_bits())?.to_bytes_le()?);
+    let input_proving_key = input_proving_key.to_bytes_le()?;
+    let input_proving_checksum = checksum(&input_proving_key);
+    let input_verifying_key = input_verifying_key.to_bytes_le()?;
+
+    let input_metadata = json!({
+        "proving_checksum": input_proving_checksum,
+        "proving_size": input_proving_key.len(),
+        "verifying_checksum": checksum(&input_verifying_key),
+        "verifying_size": input_verifying_key.len(),
+        "circuit_id": input_circuit_id
     });
 
-    println!("{}", serde_json::to_string_pretty(&universal_metadata)?);
-    write_metadata(UNIVERSAL_METADATA, &universal_metadata)?;
-    write_remote(UNIVERSAL_SRS, &universal_checksum, &universal_srs)?;
+    println!("{}", serde_json::to_string_pretty(&input_metadata)?);
+    write_metadata(INPUT_CIRCUIT_METADATA, &input_metadata)?;
+    write_remote(INPUT_PROVING_KEY, &input_proving_checksum, &input_proving_key)?;
+    write_local(INPUT_VERIFYING_KEY, &input_verifying_key)?;
 
     Ok(())
 }
 
-/// Runs the noop circuit setup.
-pub fn noop_setup<N: Network>() -> Result<()> {
-    const NOOP_CIRCUIT_METADATA: &str = "noop.metadata";
-    const NOOP_PROVING_KEY: &str = "noop.proving";
-    const NOOP_VERIFYING_KEY: &str = "noop.verifying";
+/// Runs the output circuit setup.
+pub fn output_setup<N: Network>() -> Result<()> {
+    const OUTPUT_CIRCUIT_METADATA: &str = "output.metadata";
+    const OUTPUT_PROVING_KEY: &str = "output.proving";
+    const OUTPUT_VERIFYING_KEY: &str = "output.verifying";
 
-    let (proving_key, verifying_key) = <N::ProgramSNARK as SNARK>::setup(
-        &SynthesizedCircuit::<N>::Noop(Default::default()),
-        &mut *N::program_srs(&mut thread_rng()).borrow_mut(),
-    )?;
+    let (output_proving_key, output_verifying_key) =
+        N::OutputSNARK::setup(&OutputCircuit::<N>::blank(), &mut SRS::CircuitSpecific(&mut thread_rng()))?;
 
-    let noop_function_id = hex::encode(<N as Network>::function_id(&verifying_key)?.to_bytes_le()?);
-    let noop_proving_key = proving_key.to_bytes_le()?;
-    let noop_verifying_key = verifying_key.to_bytes_le()?;
+    let output_circuit_id =
+        hex::encode(N::output_circuit_id_crh().hash(&output_verifying_key.to_minimal_bits())?.to_bytes_le()?);
+    let output_proving_key = output_proving_key.to_bytes_le()?;
+    let output_proving_checksum = checksum(&output_proving_key);
+    let output_verifying_key = output_verifying_key.to_bytes_le()?;
 
-    let noop_metadata = json!({
-        "proving_checksum": checksum(&noop_proving_key),
-        "proving_size": noop_proving_key.len(),
-        "verifying_checksum": checksum(&noop_verifying_key),
-        "verifying_size": noop_verifying_key.len(),
-        "circuit_id": noop_function_id,
+    let output_metadata = json!({
+        "proving_checksum": output_proving_checksum,
+        "proving_size": output_proving_key.len(),
+        "verifying_checksum": checksum(&output_verifying_key),
+        "verifying_size": output_verifying_key.len(),
+        "circuit_id": output_circuit_id
     });
 
-    println!("{}", serde_json::to_string_pretty(&noop_metadata)?);
-    write_metadata(NOOP_CIRCUIT_METADATA, &noop_metadata)?;
-    write_local(NOOP_PROVING_KEY, &noop_proving_key)?;
-    write_local(NOOP_VERIFYING_KEY, &noop_verifying_key)?;
-
-    Ok(())
-}
-
-/// Runs the inner circuit setup.
-pub fn inner_setup<N: Network>() -> Result<()> {
-    const INNER_CIRCUIT_METADATA: &str = "inner.metadata";
-    const INNER_PROVING_KEY: &str = "inner.proving";
-    const INNER_VERIFYING_KEY: &str = "inner.verifying";
-
-    let (inner_proving_key, inner_verifying_key) = N::InnerSNARK::setup(
-        &InnerCircuit::<N>::blank(),
-        &mut SRS::CircuitSpecific(&mut thread_rng()),
-    )?;
-
-    let inner_circuit_id = hex::encode(
-        N::inner_circuit_id_crh()
-            .hash_bits(&inner_verifying_key.to_minimal_bits())?
-            .to_bytes_le()?,
-    );
-    let inner_proving_key = inner_proving_key.to_bytes_le()?;
-    let inner_proving_checksum = checksum(&inner_proving_key);
-    let inner_verifying_key = inner_verifying_key.to_bytes_le()?;
-
-    let inner_metadata = json!({
-        "proving_checksum": inner_proving_checksum,
-        "proving_size": inner_proving_key.len(),
-        "verifying_checksum": checksum(&inner_verifying_key),
-        "verifying_size": inner_verifying_key.len(),
-        "circuit_id": inner_circuit_id
-    });
-
-    println!("{}", serde_json::to_string_pretty(&inner_metadata)?);
-    write_metadata(INNER_CIRCUIT_METADATA, &inner_metadata)?;
-    write_remote(INNER_PROVING_KEY, &inner_proving_checksum, &inner_proving_key)?;
-    write_local(INNER_VERIFYING_KEY, &inner_verifying_key)?;
-
-    Ok(())
-}
-
-/// Runs the outer circuit setup.
-pub fn outer_setup<N: Network>() -> Result<()> {
-    const OUTER_CIRCUIT_METADATA: &str = "outer.metadata";
-    const OUTER_PROVING_KEY: &str = "outer.proving";
-    const OUTER_VERIFYING_KEY: &str = "outer.verifying";
-
-    let (inner_proof, inner_verifying_key) = match N::NETWORK_NAME {
-        "testnet1" => {
-            use snarkvm_parameters::testnet1::{InnerProvingKeyBytes, InnerVerifyingKeyBytes};
-
-            let inner_proving_key =
-                <N::InnerSNARK as SNARK>::ProvingKey::read_le(InnerProvingKeyBytes::load_bytes()?.as_slice())?;
-            let inner_verifying_key =
-                <N::InnerSNARK as SNARK>::VerifyingKey::read_le(InnerVerifyingKeyBytes::load_bytes()?.as_slice())?;
-            let inner_proof = N::InnerSNARK::prove(&inner_proving_key, &InnerCircuit::<N>::blank(), &mut thread_rng())?;
-
-            (inner_proof.into(), inner_verifying_key)
-        }
-        "testnet2" => {
-            use snarkvm_parameters::testnet2::{InnerProvingKeyBytes, InnerVerifyingKeyBytes};
-
-            let inner_proving_key =
-                <N::InnerSNARK as SNARK>::ProvingKey::read_le(InnerProvingKeyBytes::load_bytes()?.as_slice())?;
-            let inner_verifying_key =
-                <N::InnerSNARK as SNARK>::VerifyingKey::read_le(InnerVerifyingKeyBytes::load_bytes()?.as_slice())?;
-            let inner_proof = N::InnerSNARK::prove(&inner_proving_key, &InnerCircuit::<N>::blank(), &mut thread_rng())?;
-
-            (inner_proof.into(), inner_verifying_key)
-        }
-        _ => panic!("Invalid network for outer setup"),
-    };
-
-    let (outer_proving_key, outer_verifying_key) = N::OuterSNARK::setup(
-        &OuterCircuit::<N>::blank(inner_verifying_key, inner_proof, Execution {
-            program_id: *N::noop_program_id(),
-            program_path: N::noop_program_path().clone(),
-            verifying_key: N::noop_circuit_verifying_key().clone(),
-            proof: Noop::<N>::new().execute(
-                ProgramPublicVariables::blank(),
-                &NoopPrivateVariables::<N>::new_blank().unwrap(),
-            )?,
-        }),
-        &mut SRS::CircuitSpecific(&mut thread_rng()),
-    )?;
-
-    let outer_proving_key = outer_proving_key.to_bytes_le()?;
-    let outer_proving_checksum = checksum(&outer_proving_key);
-    let outer_verifying_key = outer_verifying_key.to_bytes_le()?;
-
-    let outer_metadata = json!({
-        "proving_checksum": outer_proving_checksum,
-        "proving_size": outer_proving_key.len(),
-        "verifying_checksum": checksum(&outer_verifying_key),
-        "verifying_size": outer_verifying_key.len(),
-    });
-
-    println!("{}", serde_json::to_string_pretty(&outer_metadata)?);
-    write_metadata(OUTER_CIRCUIT_METADATA, &outer_metadata)?;
-    write_remote(OUTER_PROVING_KEY, &outer_proving_checksum, &outer_proving_key)?;
-    write_local(OUTER_VERIFYING_KEY, &outer_verifying_key)?;
+    println!("{}", serde_json::to_string_pretty(&output_metadata)?);
+    write_metadata(OUTPUT_CIRCUIT_METADATA, &output_metadata)?;
+    write_remote(OUTPUT_PROVING_KEY, &output_proving_checksum, &output_proving_key)?;
+    write_local(OUTPUT_VERIFYING_KEY, &output_verifying_key)?;
 
     Ok(())
 }
@@ -235,7 +155,7 @@ pub fn posw_setup<N: Network>() -> Result<()> {
 
     // TODO: decide the size of the universal setup
     let max_degree =
-        AHPForR1CS::<<N as Network>::InnerScalarField, MarlinTestnet1Mode>::max_degree(40000, 40000, 60000).unwrap();
+        AHPForR1CS::<<N as Network>::InnerScalarField, MarlinHidingMode>::max_degree(40000, 40000, 60000).unwrap();
     let universal_srs = <<N as Network>::PoSWSNARK as SNARK>::universal_setup(&max_degree, &mut thread_rng())?;
     let srs_bytes = universal_srs.to_bytes_le()?;
     println!("srs\n\tsize - {}", srs_bytes.len());
@@ -244,11 +164,7 @@ pub fn posw_setup<N: Network>() -> Result<()> {
         &FromBytes::read_le(&srs_bytes[..])?,
     ))?;
 
-    let posw_proving_key = posw
-        .proving_key()
-        .as_ref()
-        .expect("posw_proving_key is missing")
-        .to_bytes_le()?;
+    let posw_proving_key = posw.proving_key().as_ref().expect("posw_proving_key is missing").to_bytes_le()?;
     let posw_proving_checksum = checksum(&posw_proving_key);
     let posw_verifying_key = posw.verifying_key().to_bytes_le()?;
 
@@ -267,6 +183,45 @@ pub fn posw_setup<N: Network>() -> Result<()> {
     Ok(())
 }
 
+/// Runs the trial SRS setup. (cargo run --release --example setup trial_srs 524288)
+pub fn trial_srs<N: snarkvm_console::network::Network>(num_gates: usize) -> Result<()> {
+    const TRIAL_SRS_METADATA: &str = "universal.srs.trial.metadata";
+    const TRIAL_SRS: &str = "universal.srs.trial";
+
+    let mut rng = snarkvm_utilities::test_crypto_rng_fixed();
+
+    use snarkvm_algorithms::{crypto_hash::PoseidonSponge, snark::marlin};
+    use snarkvm_console::network::Environment;
+    use snarkvm_curves::PairingEngine;
+    use snarkvm_utilities::{CanonicalSerialize, Compress};
+
+    type Fq<N> = <<N as Environment>::PairingCurve as PairingEngine>::Fq;
+    type Fr<N> = <N as Environment>::Field;
+    type FS<N> = marlin::fiat_shamir::FiatShamirAlgebraicSpongeRng<Fr<N>, Fq<N>, PoseidonSponge<Fq<N>, 6, 1>>;
+    type Marlin<N> = marlin::MarlinSNARK<<N as Environment>::PairingCurve, FS<N>, MarlinHidingMode, [Fr<N>]>;
+
+    let timer = std::time::Instant::now();
+    let max_degree = AHPForR1CS::<N::Field, MarlinHidingMode>::max_degree(num_gates, num_gates, num_gates).unwrap();
+    let universal_srs = Marlin::<N>::universal_setup(&max_degree, &mut rng)?;
+    println!("Called universal setup: {} ms", timer.elapsed().as_millis());
+
+    let mut srs_bytes = vec![];
+    universal_srs.serialize_with_mode(&mut srs_bytes, Compress::No)?;
+
+    let srs_checksum = checksum(&srs_bytes);
+
+    let srs_metadata = json!({
+        "checksum": srs_checksum,
+        "size": srs_bytes.len(),
+    });
+
+    println!("{}", serde_json::to_string_pretty(&srs_metadata)?);
+    write_metadata(TRIAL_SRS_METADATA, &srs_metadata)?;
+    write_remote(TRIAL_SRS, &srs_checksum, &srs_bytes)?;
+
+    Ok(())
+}
+
 /// Run the following command to perform a setup.
 /// `cargo run --example setup [parameter] [network]`
 pub fn main() -> Result<()> {
@@ -277,31 +232,22 @@ pub fn main() -> Result<()> {
     }
 
     match args[1].as_str() {
-        "inner" => match args[2].as_str() {
-            "testnet1" => inner_setup::<snarkvm_dpc::testnet1::Testnet1>()?,
-            "testnet2" => inner_setup::<snarkvm_dpc::testnet2::Testnet2>()?,
-            _ => panic!("Invalid network"),
-        },
-        "noop" => match args[2].as_str() {
-            "testnet1" => noop_setup::<snarkvm_dpc::testnet1::Testnet1>()?,
-            "testnet2" => noop_setup::<snarkvm_dpc::testnet2::Testnet2>()?,
-            _ => panic!("Invalid network"),
-        },
-        "outer" => match args[2].as_str() {
-            "testnet1" => outer_setup::<snarkvm_dpc::testnet1::Testnet1>()?,
-            "testnet2" => outer_setup::<snarkvm_dpc::testnet2::Testnet2>()?,
-            _ => panic!("Invalid network"),
-        },
         "posw" => match args[2].as_str() {
             "testnet1" => posw_setup::<snarkvm_dpc::testnet1::Testnet1>()?,
             "testnet2" => posw_setup::<snarkvm_dpc::testnet2::Testnet2>()?,
             _ => panic!("Invalid network"),
         },
-        "universal" => match args[2].as_str() {
-            "testnet1" => panic!("Testnet1 does not support a universal SRS"),
-            "testnet2" => universal_setup::<snarkvm_dpc::testnet2::Testnet2>()?,
+        "input" => match args[2].as_str() {
+            "testnet1" => input_setup::<snarkvm_dpc::testnet1::Testnet1>()?,
+            "testnet2" => input_setup::<snarkvm_dpc::testnet2::Testnet2>()?,
             _ => panic!("Invalid network"),
         },
+        "output" => match args[2].as_str() {
+            "testnet1" => output_setup::<snarkvm_dpc::testnet1::Testnet1>()?,
+            "testnet2" => output_setup::<snarkvm_dpc::testnet2::Testnet2>()?,
+            _ => panic!("Invalid network"),
+        },
+        "trial_srs" => trial_srs::<snarkvm_console::network::Testnet3>(args[2].as_str().parse::<usize>()?)?,
         _ => panic!("Invalid parameter"),
     };
 

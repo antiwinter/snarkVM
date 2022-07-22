@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -16,10 +16,10 @@
 
 use crate::{
     templates::short_weierstrass_jacobian::Affine,
-    traits::{AffineCurve, Group, ProjectiveCurve, ShortWeierstrassParameters as Parameters},
+    traits::{AffineCurve, ProjectiveCurve, ShortWeierstrassParameters as Parameters},
 };
 use snarkvm_fields::{impl_add_sub_from_field_ref, Field, One, PrimeField, Zero};
-use snarkvm_utilities::{bititerator::BitIteratorBE, rand::UniformRand, serialize::*, FromBytes, ToBytes};
+use snarkvm_utilities::{bititerator::BitIteratorBE, rand::Uniform, serialize::*, FromBytes, ToBytes};
 
 use rand::{
     distributions::{Distribution, Standard},
@@ -46,14 +46,35 @@ pub struct Projective<P: Parameters> {
 }
 
 impl<P: Parameters> Projective<P> {
-    pub fn new(x: P::BaseField, y: P::BaseField, z: P::BaseField) -> Self {
+    pub const fn new(x: P::BaseField, y: P::BaseField, z: P::BaseField) -> Self {
         Self { x, y, z }
+    }
+}
+
+impl<P: Parameters> Zero for Projective<P> {
+    // The point at infinity is always represented by Z = 0.
+    #[inline]
+    fn zero() -> Self {
+        Self::new(P::BaseField::zero(), P::BaseField::one(), P::BaseField::zero())
+    }
+
+    // The point at infinity is always represented by Z = 0.
+    #[inline]
+    fn is_zero(&self) -> bool {
+        self.z.is_zero()
+    }
+}
+
+impl<P: Parameters> Default for Projective<P> {
+    #[inline]
+    fn default() -> Self {
+        Self::zero()
     }
 }
 
 impl<P: Parameters> Display for Projective<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        write!(f, "{}", self.into_affine())
+        write!(f, "{}", self.to_affine())
     }
 }
 
@@ -77,6 +98,24 @@ impl<P: Parameters> PartialEq for Projective<P> {
     }
 }
 
+impl<P: Parameters> PartialEq<Affine<P>> for Projective<P> {
+    fn eq(&self, other: &Affine<P>) -> bool {
+        if self.is_zero() {
+            return other.is_zero();
+        }
+
+        if other.is_zero() {
+            return false;
+        }
+
+        // The points (X, Y, Z) and (X', Y', Z')
+        // are equal when (X * Z^2) = (X' * Z'^2)
+        // and (Y * Z^3) = (Y' * Z'^3).
+        let z1 = self.z.square();
+        (self.x == other.x * z1) & (self.y == other.y * z1 * self.z)
+    }
+}
+
 impl<P: Parameters> Distribution<Projective<P>> for Standard {
     #[inline]
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Projective<P> {
@@ -85,7 +124,7 @@ impl<P: Parameters> Distribution<Projective<P>> for Standard {
             let greatest = rng.gen();
 
             if let Some(p) = Affine::from_x_coordinate(x, greatest) {
-                return p.scale_by_cofactor();
+                return p.mul_by_cofactor_to_projective();
             }
         }
     }
@@ -110,32 +149,10 @@ impl<P: Parameters> FromBytes for Projective<P> {
     }
 }
 
-impl<P: Parameters> Default for Projective<P> {
-    #[inline]
-    fn default() -> Self {
-        Self::zero()
-    }
-}
-
-impl<P: Parameters> Zero for Projective<P> {
-    // The point at infinity is always represented by
-    // Z = 0.
-    #[inline]
-    fn zero() -> Self {
-        Self::new(P::BaseField::zero(), P::BaseField::one(), P::BaseField::zero())
-    }
-
-    // The point at infinity is always represented by
-    // Z = 0.
-    #[inline]
-    fn is_zero(&self) -> bool {
-        self.z.is_zero()
-    }
-}
-
 impl<P: Parameters> ProjectiveCurve for Projective<P> {
     type Affine = Affine<P>;
     type BaseField = P::BaseField;
+    type ScalarField = P::ScalarField;
 
     #[inline]
     fn prime_subgroup_generator() -> Self {
@@ -245,7 +262,8 @@ impl<P: Parameters> ProjectiveCurve for Projective<P> {
             // If we're adding -a and a together, self.z becomes zero as H becomes zero.
 
             // H = U2-X1
-            let h = u2 - self.x;
+            let mut h = u2;
+            h -= &self.x;
 
             // HH = H^2
             let hh = h.square();
@@ -256,24 +274,28 @@ impl<P: Parameters> ProjectiveCurve for Projective<P> {
             i.double_in_place();
 
             // J = H*I
-            let mut j = h * i;
+            let mut j = h;
+            j *= &i;
 
             // r = 2*(S2-Y1)
-            let r = (s2 - self.y).double();
+            let mut r = s2;
+            r -= &self.y;
+            r.double_in_place();
 
             // V = X1*I
-            let v = self.x * i;
+            let mut v = self.x;
+            v *= &i;
 
             // X3 = r^2 - J - 2*V
             self.x = r.square();
             self.x -= &j;
-            self.x -= &v;
-            self.x -= &v;
+            self.x -= &v.double();
 
             // Y3 = r*(V-X3)-2*Y1*J
             j *= &self.y; // J = 2*Y1*J
             j.double_in_place();
-            self.y = v - self.x;
+            self.y = v;
+            self.y -= self.x;
             self.y *= &r;
             self.y -= &j;
 
@@ -284,25 +306,6 @@ impl<P: Parameters> ProjectiveCurve for Projective<P> {
             self.z -= &hh;
         }
     }
-
-    #[inline]
-    fn into_affine(&self) -> Affine<P> {
-        (*self).into()
-    }
-
-    #[inline]
-    fn recommended_wnaf_for_scalar(scalar: <Self::ScalarField as PrimeField>::BigInteger) -> usize {
-        P::empirical_recommended_wnaf_for_scalar(scalar)
-    }
-
-    #[inline]
-    fn recommended_wnaf_for_num_scalars(num_scalars: usize) -> usize {
-        P::empirical_recommended_wnaf_for_num_scalars(num_scalars)
-    }
-}
-
-impl<P: Parameters> Group for Projective<P> {
-    type ScalarField = P::ScalarField;
 
     #[inline]
     #[must_use]
@@ -369,7 +372,7 @@ impl<P: Parameters> Group for Projective<P> {
             let s = ((self.x + yy).square() - xx - yyyy).double();
 
             // M = 3*XX+a*ZZ^2
-            let m = xx + xx + xx + P::mul_by_a(&zz.square());
+            let m = xx.double() + xx + P::mul_by_a(&zz.square());
 
             // T = M^2-2*S
             let t = m.square() - s.double();
@@ -386,6 +389,11 @@ impl<P: Parameters> Group for Projective<P> {
             self.z = (old_y + self.z).square() - yy - zz;
         }
     }
+
+    #[inline]
+    fn to_affine(&self) -> Affine<P> {
+        (*self).into()
+    }
 }
 
 impl<P: Parameters> Neg for Projective<P> {
@@ -393,11 +401,7 @@ impl<P: Parameters> Neg for Projective<P> {
 
     #[inline]
     fn neg(self) -> Self {
-        if !self.is_zero() {
-            Self::new(self.x, -self.y, self.z)
-        } else {
-            self
-        }
+        if !self.is_zero() { Self::new(self.x, -self.y, self.z) } else { self }
     }
 }
 
@@ -506,16 +510,8 @@ impl<P: Parameters> Mul<P::ScalarField> for Projective<P> {
     #[inline]
     fn mul(self, other: P::ScalarField) -> Self {
         let mut res = Self::zero();
-
-        let mut found_one = false;
-
-        for i in BitIteratorBE::new(other.to_repr()) {
-            if found_one {
-                res.double_in_place();
-            } else {
-                found_one = i;
-            }
-
+        for i in BitIteratorBE::new_without_leading_zeros(other.to_repr()) {
+            res.double_in_place();
             if i {
                 res += self;
             }
@@ -536,10 +532,6 @@ impl<P: Parameters> MulAssign<P::ScalarField> for Projective<P> {
 impl<P: Parameters> From<Affine<P>> for Projective<P> {
     #[inline]
     fn from(p: Affine<P>) -> Projective<P> {
-        if p.is_zero() {
-            Self::zero()
-        } else {
-            Self::new(p.x, p.y, P::BaseField::one())
-        }
+        if p.is_zero() { Self::zero() } else { Self::new(p.x, p.y, P::BaseField::one()) }
     }
 }

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -24,7 +24,7 @@ pub mod evaluations;
 pub use evaluations::Evaluations;
 
 pub mod polynomial;
-pub use polynomial::{DenseOrSparsePolynomial, DensePolynomial, SparsePolynomial};
+pub use polynomial::{DensePolynomial, Polynomial, SparsePolynomial};
 
 #[cfg(test)]
 mod tests;

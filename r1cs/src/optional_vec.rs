@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -26,10 +26,7 @@ pub struct OptionalVec<T> {
 
 impl<T> Default for OptionalVec<T> {
     fn default() -> Self {
-        Self {
-            values: Default::default(),
-            holes: Default::default(),
-        }
+        Self { values: Default::default(), holes: Default::default() }
     }
 }
 
@@ -37,10 +34,7 @@ impl<T> OptionalVec<T> {
     /// Creates a new `OptionalVec` with the given underlying capacity.
     #[inline]
     pub fn with_capacity(cap: usize) -> Self {
-        Self {
-            values: Vec::with_capacity(cap),
-            holes: Default::default(),
-        }
+        Self { values: Vec::with_capacity(cap), holes: Default::default() }
     }
 
     /// Inserts a new value either into the first existing hole or extending the vector
@@ -74,7 +68,7 @@ impl<T> OptionalVec<T> {
     /// Iterates over all the `Some(T)` values in the list.
     #[inline]
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.values.iter().filter(|v| v.is_some()).map(|v| v.as_ref().unwrap())
+        self.values.iter().filter_map(|v| v.as_ref())
     }
 
     /// Returns the number of `Some(T)` values.

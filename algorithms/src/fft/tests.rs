@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -18,7 +18,7 @@ use crate::fft::{domain::*, DensePolynomial};
 use rand::Rng;
 use snarkvm_curves::bls12_377::{Fr, G1Projective};
 use snarkvm_fields::{FftField, Field, One, Zero};
-use snarkvm_utilities::{rand::UniformRand, test_rng};
+use snarkvm_utilities::{rand::Uniform, test_rng};
 
 #[test]
 fn vanishing_polynomial_evaluation() {
@@ -141,16 +141,8 @@ fn test_fft_correctness() {
         let rand_poly_from_subgroup = DensePolynomial::from_coefficients_vec(domain.ifft(&poly_evals));
         let rand_poly_from_coset = DensePolynomial::from_coefficients_vec(domain.coset_ifft(&poly_coset_evals));
 
-        assert_eq!(
-            rand_poly, rand_poly_from_subgroup,
-            "degree = {}, domain size = {}",
-            degree, domain_size
-        );
-        assert_eq!(
-            rand_poly, rand_poly_from_coset,
-            "degree = {}, domain size = {}",
-            degree, domain_size
-        );
+        assert_eq!(rand_poly, rand_poly_from_subgroup, "degree = {}, domain size = {}", degree, domain_size);
+        assert_eq!(rand_poly, rand_poly_from_coset, "degree = {}, domain size = {}", degree, domain_size);
     }
 }
 
@@ -292,11 +284,7 @@ fn parallel_fft_consistency() {
 
 #[test]
 fn fft_composition() {
-    fn test_fft_composition<
-        F: FftField,
-        T: crate::fft::DomainCoeff<F> + UniformRand + core::fmt::Debug + Eq,
-        R: Rng,
-    >(
+    fn test_fft_composition<F: FftField, T: crate::fft::DomainCoeff<F> + Uniform + core::fmt::Debug + Eq, R: Rng>(
         rng: &mut R,
         max_coeffs: usize,
     ) {
@@ -335,4 +323,19 @@ fn fft_composition() {
 
     test_fft_composition::<Fr, Fr, _>(rng, 10);
     test_fft_composition::<Fr, G1Projective, _>(rng, 10);
+}
+
+#[test]
+fn evaluate_over_domain() {
+    let rng = &mut test_rng();
+    for domain_size in (1..10).map(|i| 2usize.pow(i)) {
+        let domain = EvaluationDomain::<Fr>::new(domain_size).unwrap();
+        for degree in [domain_size - 2, domain_size - 1, domain_size + 10] {
+            let p = DensePolynomial::rand(degree, rng);
+            assert_eq!(
+                p.evaluate_over_domain_by_ref(domain).evaluations,
+                domain.elements().map(|e| p.evaluate(e)).collect::<Vec<_>>()
+            );
+        }
+    }
 }

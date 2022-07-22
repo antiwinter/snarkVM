@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -21,7 +21,7 @@ use snarkvm_r1cs::{errors::SynthesisError, ConstraintSystem};
 
 use crate::{
     bits::Boolean,
-    integers::uint::{UInt128, UInt16, UInt32, UInt64, UInt8},
+    integers::uint::UInt8,
     traits::{
         bits::{ComparatorGadget, EvaluateLtGadget, Xor},
         select::CondSelectGadget,
@@ -79,4 +79,4 @@ macro_rules! uint_cmp_impl {
     )*)
 }
 
-uint_cmp_impl!(UInt8, UInt16, UInt32, UInt64, UInt128);
+uint_cmp_impl!(UInt8);

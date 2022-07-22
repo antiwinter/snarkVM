@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -19,7 +19,7 @@ use snarkvm_curves::{
     templates::bls12::{G1Prepared, G2Prepared},
     traits::{PairingCurve, PairingEngine},
 };
-use snarkvm_utilities::rand::UniformRand;
+use snarkvm_utilities::rand::Uniform;
 
 use criterion::Criterion;
 use rand::SeedableRng;
@@ -33,12 +33,7 @@ pub fn bench_pairing_miller_loop(c: &mut Criterion) {
     let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
 
     let v: Vec<(G1Prepared<Bls12_377Parameters>, G2Prepared<Bls12_377Parameters>)> = (0..SAMPLES)
-        .map(|_| {
-            (
-                G1Affine::from(G1::rand(&mut rng)).prepare(),
-                G2Affine::from(G2::rand(&mut rng)).prepare(),
-            )
-        })
+        .map(|_| (G1Affine::from(G1::rand(&mut rng)).prepare(), G2Affine::from(G2::rand(&mut rng)).prepare()))
         .collect();
 
     let mut count = 0;
@@ -57,12 +52,7 @@ pub fn bench_pairing_final_exponentiation(c: &mut Criterion) {
     let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
 
     let v: Vec<Fq12> = (0..SAMPLES)
-        .map(|_| {
-            (
-                G1Affine::from(G1::rand(&mut rng)).prepare(),
-                G2Affine::from(G2::rand(&mut rng)).prepare(),
-            )
-        })
+        .map(|_| (G1Affine::from(G1::rand(&mut rng)).prepare(), G2Affine::from(G2::rand(&mut rng)).prepare()))
         .map(|(ref p, ref q)| Bls12_377::miller_loop([(p, q)].iter().copied()))
         .collect();
 

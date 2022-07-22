@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ use std::str::FromStr;
 pub type EdwardsAffine = Affine<EdwardsParameters>;
 pub type EdwardsProjective = Projective<EdwardsParameters>;
 
-#[derive(Clone, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct EdwardsParameters;
 
 impl ModelParameters for EdwardsParameters {
@@ -143,11 +143,7 @@ impl FromStr for EdwardsAffine {
         }
         let point = EdwardsAffine::new(point[0], point[1]);
 
-        if !point.is_on_curve() {
-            Err(GroupError::InvalidGroupElement)
-        } else {
-            Ok(point)
-        }
+        if !point.is_on_curve() { Err(GroupError::InvalidGroupElement) } else { Ok(point) }
     }
 }
 

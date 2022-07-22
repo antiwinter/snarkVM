@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
 
 use crate::{AccountError, Network, PrivateKey};
 use snarkvm_algorithms::SignatureSchemeOperations;
-use snarkvm_curves::AffineCurve;
+use snarkvm_curves::{AffineCurve, ProjectiveCurve};
 use snarkvm_utilities::{FromBytes, ToBytes};
 
 use rand::thread_rng;
@@ -25,12 +25,7 @@ use std::{
     io::{Read, Result as IoResult, Write},
 };
 
-#[derive(Derivative)]
-#[derivative(
-    Clone(bound = "N: Network"),
-    PartialEq(bound = "N: Network"),
-    Eq(bound = "N: Network")
-)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ComputeKey<N: Network> {
     /// pk_sig := G^sk_sig.
     pk_sig: N::ProgramAffineCurve,
@@ -61,6 +56,10 @@ impl<N: Network> ComputeKey<N> {
 
         // Compute G^r_sig.
         let pr_sig = N::account_signature_scheme().g_scalar_multiply(&private_key.r_sig);
+
+        let mut to_normalize = [pk_sig, pr_sig];
+        <N::ProgramAffineCurve as AffineCurve>::Projective::batch_normalization(&mut to_normalize);
+        let [pk_sig, pr_sig] = to_normalize.map(|c| c.to_affine());
 
         Self::new(pk_sig, pr_sig)
     }
@@ -104,7 +103,7 @@ impl<N: Network> ComputeKey<N> {
         // Compute G^sk_prf.
         let pk_prf = N::account_signature_scheme().g_scalar_multiply(&self.sk_prf);
 
-        self.pk_sig + self.pr_sig + pk_prf
+        (self.pk_sig.to_projective() + self.pr_sig.to_projective() + pk_prf).into()
     }
 }
 
@@ -127,11 +126,7 @@ impl<N: Network> ToBytes for ComputeKey<N> {
 
 impl<N: Network> fmt::Debug for ComputeKey<N> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "ComputeKey {{ pk_sig: {:?}, pr_sig: {:?} }}",
-            self.pk_sig, self.pr_sig
-        )
+        write!(f, "ComputeKey {{ pk_sig: {:?}, pr_sig: {:?} }}", self.pk_sig, self.pr_sig)
     }
 }
 

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -17,21 +17,45 @@
 use crate::{circuits::*, prelude::*};
 use snarkvm_algorithms::prelude::*;
 use snarkvm_r1cs::{ConstraintSynthesizer, ConstraintSystem, TestConstraintSystem};
-use snarkvm_utilities::{ToBytes, ToMinimalBits};
 
+use itertools::Itertools;
 use rand::thread_rng;
 
-fn dpc_execute_circuits_test<N: Network>(expected_inner_num_constraints: usize, expected_outer_num_constraints: usize) {
+fn dpc_execute_circuits_test<N: Network>(
+    expected_input_num_constraints: usize,
+    expected_output_num_constraints: usize,
+    num_inputs: usize,
+    num_outputs: usize,
+) {
     let rng = &mut thread_rng();
 
+    let sender = Account::new(rng);
     let recipient = Account::new(rng);
-    let amount = AleoAmount::from_i64(10);
-    let request = Request::new_coinbase(recipient.address(), amount, false, rng).unwrap();
-    let response = ResponseBuilder::new()
-        .add_request(request.clone())
-        .add_output(Output::new(recipient.address(), amount, Default::default(), None).unwrap())
-        .build(rng)
-        .unwrap();
+    let amount = AleoAmount::from_gate(0);
+
+    let mut records = Vec::new();
+    let mut ledger_proofs = Vec::new();
+    for _ in 0..num_inputs {
+        let record = Record::new_noop(sender.address(), rng).unwrap();
+        let ledger_proof = LedgerProof::default();
+
+        records.push(record.clone());
+        ledger_proofs.push(ledger_proof);
+    }
+
+    // Coinbase transactions do not have input proofs, so we use a dummy transfer to test both
+    // the input and output circuits.
+    let request: Request<N> =
+        Request::new_transfer(sender.private_key(), records, ledger_proofs, recipient.address(), amount, false, rng)
+            .unwrap();
+
+    let mut response_builder = ResponseBuilder::new().add_request(request.clone());
+
+    for _ in 0..num_outputs {
+        response_builder = response_builder.add_output(Output::new(recipient.address(), amount, None, None).unwrap());
+    }
+
+    let response: Response<N> = response_builder.build(rng).unwrap();
 
     //////////////////////////////////////////////////////////////////////////
 
@@ -45,10 +69,10 @@ fn dpc_execute_circuits_test<N: Network>(expected_inner_num_constraints: usize, 
 
     // Compute the value balance.
     let mut value_balance = AleoAmount::ZERO;
-    for record in request.records().iter().take(N::NUM_INPUT_RECORDS) {
+    for record in request.records().iter() {
         value_balance = value_balance.add(record.value());
     }
-    for record in response.records().iter().take(N::NUM_OUTPUT_RECORDS) {
+    for record in response.records().iter() {
         value_balance = value_balance.sub(record.value());
     }
 
@@ -60,132 +84,194 @@ fn dpc_execute_circuits_test<N: Network>(expected_inner_num_constraints: usize, 
 
     //////////////////////////////////////////////////////////////////////////
 
-    // Compute the noop execution
-    let execution = Execution {
-        program_id: *N::noop_program_id(),
-        program_path: N::noop_program_path().clone(),
-        verifying_key: N::noop_circuit_verifying_key().clone(),
-        proof: Noop::<N>::new()
-            .execute(
-                ProgramPublicVariables::new(transition_id),
-                &NoopPrivateVariables::<N>::new_blank().unwrap(),
-            )
-            .unwrap(),
-    };
-    assert_eq!(
-        N::PROGRAM_PROOF_SIZE_IN_BYTES,
-        N::ProgramProof::to_bytes_le(&execution.proof).unwrap().len()
-    );
+    // Generate input circuit parameters and proof.
+    let (input_proving_key, input_verifying_key) =
+        <N as Network>::InputSNARK::setup(&InputCircuit::<N>::blank(), &mut SRS::CircuitSpecific(rng)).unwrap();
 
-    //////////////////////////////////////////////////////////////////////////
+    let mut input_circuits = Vec::new();
+    let mut input_public_inputs = Vec::new();
 
-    // Construct the inner circuit public and private variables.
-    let inner_public = InnerPublicVariables::new(
-        transition_id,
-        value_balance,
-        ledger_root,
-        local_transitions_root,
-        Some(program_id),
-    );
-    let inner_private = InnerPrivateVariables::new(&request, &response).unwrap();
+    // Compute the input circuit proofs.
+    for (
+        ((((record, serial_number), ledger_proof), signature), input_value_commitment),
+        input_value_commitment_randomness,
+    ) in request
+        .records()
+        .iter()
+        .zip_eq(request.to_serial_numbers().unwrap().iter())
+        .zip_eq(request.ledger_proofs())
+        .zip_eq(request.signatures())
+        .zip_eq(response.input_value_commitments())
+        .zip_eq(response.input_value_commitment_randomness())
+    {
+        // Check that the input constraint system was satisfied.
+        let mut input_cs = TestConstraintSystem::<N::InnerScalarField>::new();
 
-    // Check that the core check constraint system was satisfied.
-    let mut inner_cs = TestConstraintSystem::<N::InnerScalarField>::new();
-
-    let inner_circuit = InnerCircuit::new(inner_public, inner_private);
-    inner_circuit
-        .generate_constraints(&mut inner_cs.ns(|| "Inner circuit"))
+        let input_public = InputPublicVariables::<N>::new(
+            *serial_number,
+            input_value_commitment.clone(),
+            ledger_root,
+            local_transitions_root,
+            program_id,
+        );
+        let input_private = InputPrivateVariables::<N>::new(
+            record.clone(),
+            ledger_proof.clone(),
+            signature.clone(),
+            *input_value_commitment_randomness,
+        )
         .unwrap();
 
-    let candidate_inner_num_constraints = inner_cs.num_constraints();
+        let input_circuit = InputCircuit::<N>::new(input_public.clone(), input_private);
+        input_circuit.generate_constraints(&mut input_cs.ns(|| "Input circuit")).unwrap();
 
-    if !inner_cs.is_satisfied() {
+        let candidate_input_num_constraints = input_cs.num_constraints();
+        let (num_non_zero_a, num_non_zero_b, num_non_zero_c) = input_cs.num_non_zero();
+
+        if !dbg!(input_cs.is_satisfied()) {
+            println!("=========================================================");
+            println!("Input circuit num constraints: {}", candidate_input_num_constraints);
+            println!("Unsatisfied constraints:\n{}", input_cs.which_is_unsatisfied().unwrap());
+            println!("=========================================================");
+        }
+
         println!("=========================================================");
-        println!("Inner circuit num constraints: {}", candidate_inner_num_constraints);
-        println!("Unsatisfied constraints:\n{}", inner_cs.which_is_unsatisfied().unwrap());
+        println!("Input circuit num constraints: {}", candidate_input_num_constraints);
+        assert_eq!(expected_input_num_constraints, candidate_input_num_constraints);
         println!("=========================================================");
+
+        println!("=========================================================");
+        println!("Input circuit num non_zero_a: {}", num_non_zero_a);
+        println!("Input circuit num non_zero_b: {}", num_non_zero_b);
+        println!("Input circuit num non_zero_c: {}", num_non_zero_c);
+        println!("=========================================================");
+
+        assert!(input_cs.is_satisfied());
+
+        //////////////////////////////////////////////////////////////////////////
+
+        input_circuits.push(input_circuit);
+        input_public_inputs.push(input_public);
+
+        //////////////////////////////////////////////////////////////////////////
     }
+    let proving_start = std::time::Instant::now();
+    let input_proof = <N as Network>::InputSNARK::prove_batch(&input_proving_key, &input_circuits, rng).unwrap();
+    println!("Proving time for {num_inputs} x {num_outputs}: {}", proving_start.elapsed().as_secs_f64());
 
-    println!("=========================================================");
-    println!("Inner circuit num constraints: {}", candidate_inner_num_constraints);
-    assert_eq!(expected_inner_num_constraints, candidate_inner_num_constraints);
-    println!("=========================================================");
-
-    assert!(inner_cs.is_satisfied());
-
-    //////////////////////////////////////////////////////////////////////////
-
-    // Generate inner circuit parameters and proof for verification in the outer circuit.
-    let (inner_proving_key, inner_verifying_key) =
-        <N as Network>::InnerSNARK::setup(&InnerCircuit::<N>::blank(), &mut SRS::CircuitSpecific(rng)).unwrap();
-
-    // NOTE: Do not change this to `N::inner_circuit_id()` as that will load the *saved* inner circuit VK.
-    let inner_circuit_id = <N as Network>::inner_circuit_id_crh()
-        .hash_bits(&inner_verifying_key.to_minimal_bits())
-        .unwrap()
-        .into();
-
-    let inner_proof = <N as Network>::InnerSNARK::prove(&inner_proving_key, &inner_circuit, rng).unwrap();
-    assert_eq!(N::INNER_PROOF_SIZE_IN_BYTES, inner_proof.to_bytes_le().unwrap().len());
-
+    let verifying_start = std::time::Instant::now();
     // Verify that the inner circuit proof passes.
-    assert!(<N as Network>::InnerSNARK::verify(&inner_verifying_key, &inner_public, &inner_proof).unwrap());
+    assert!(
+        <N as Network>::InputSNARK::verify_batch(&input_verifying_key, &input_public_inputs, &input_proof).unwrap()
+    );
+    println!("Verifying time: {}", verifying_start.elapsed().as_secs_f64());
 
     //////////////////////////////////////////////////////////////////////////
 
-    // Construct the outer circuit public and private variables.
-    let outer_public = OuterPublicVariables::new(inner_public, &inner_circuit_id);
-    let outer_private = OuterPrivateVariables::new(inner_verifying_key, inner_proof.into(), execution);
+    // Generate output circuit parameters and proof.
+    let (output_proving_key, output_verifying_key) =
+        <N as Network>::OutputSNARK::setup(&OutputCircuit::<N>::blank(), &mut SRS::CircuitSpecific(rng)).unwrap();
 
-    // Check that the proof check constraint system was satisfied.
-    let mut outer_cs = TestConstraintSystem::<N::OuterScalarField>::new();
+    let mut output_circuits = Vec::new();
+    let mut output_public_inputs = Vec::new();
 
-    execute_outer_circuit::<N, _>(&mut outer_cs.ns(|| "Outer circuit"), &outer_public, &outer_private).unwrap();
+    // Compute the output circuit proofs.
+    for (
+        (((record, commitment), encryption_randomness), output_value_commitment),
+        output_value_commitment_randomness,
+    ) in response
+        .records()
+        .iter()
+        .zip_eq(response.commitments())
+        .zip_eq(response.encryption_randomness())
+        .zip_eq(response.output_value_commitments())
+        .zip_eq(response.output_value_commitment_randomness())
+    {
+        // Check that the output constraint system was satisfied.
+        let mut output_cs = TestConstraintSystem::<N::InnerScalarField>::new();
 
-    let candidate_outer_num_constraints = outer_cs.num_constraints();
+        let output_public = OutputPublicVariables::<N>::new(commitment, output_value_commitment.clone(), program_id);
+        let output_private = OutputPrivateVariables::<N>::new(
+            record.clone(),
+            *encryption_randomness,
+            *output_value_commitment_randomness,
+        )
+        .unwrap();
 
-    if !outer_cs.is_satisfied() {
+        let output_circuit = OutputCircuit::<N>::new(output_public.clone(), output_private);
+        output_circuit.generate_constraints(&mut output_cs.ns(|| "Output circuit")).unwrap();
+
+        let candidate_output_num_constraints = output_cs.num_constraints();
+        let (num_non_zero_a, num_non_zero_b, num_non_zero_c) = output_cs.num_non_zero();
+
+        if !dbg!(output_cs.is_satisfied()) {
+            println!("=========================================================");
+            println!("Output circuit num constraints: {}", candidate_output_num_constraints);
+            println!("Unsatisfied constraints:\n{}", output_cs.which_is_unsatisfied().unwrap());
+            println!("=========================================================");
+        }
+
         println!("=========================================================");
-        println!("Outer circuit num constraints: {}", candidate_outer_num_constraints);
-        println!("Unsatisfied constraints:\n{}", outer_cs.which_is_unsatisfied().unwrap());
+        println!("Output circuit num constraints: {}", candidate_output_num_constraints);
+        assert_eq!(expected_output_num_constraints, candidate_output_num_constraints);
         println!("=========================================================");
+
+        println!("=========================================================");
+        println!("Output circuit num non_zero_a: {}", num_non_zero_a);
+        println!("Output circuit num non_zero_b: {}", num_non_zero_b);
+        println!("Output circuit num non_zero_c: {}", num_non_zero_c);
+        println!("=========================================================");
+
+        assert!(output_cs.is_satisfied());
+
+        //////////////////////////////////////////////////////////////////////////
+
+        output_circuits.push(output_circuit);
+        output_public_inputs.push(output_public);
     }
+    let proving_start = std::time::Instant::now();
+    let output_proof = <N as Network>::OutputSNARK::prove_batch(&output_proving_key, &output_circuits, rng).unwrap();
+    println!("Proving time for {num_inputs} x {num_outputs}: {}", proving_start.elapsed().as_secs_f64());
 
-    println!("=========================================================");
-    println!("Outer circuit num constraints: {}", candidate_outer_num_constraints);
-    assert_eq!(expected_outer_num_constraints, candidate_outer_num_constraints);
-    println!("=========================================================");
-
-    assert!(outer_cs.is_satisfied());
+    let verifying_start = std::time::Instant::now();
+    // Verify that the inner circuit proof passes.
+    assert!(
+        <N as Network>::OutputSNARK::verify_batch(&output_verifying_key, &output_public_inputs, &output_proof).unwrap()
+    );
+    println!("Verifying time: {}", verifying_start.elapsed().as_secs_f64());
 
     //////////////////////////////////////////////////////////////////////////
 
-    let outer_circuit = OuterCircuit::<N>::new(outer_public.clone(), outer_private);
+    // Construct the execution.
+    let execution = Execution::<N>::from(None).unwrap();
 
-    // Generate outer circuit parameters and proof.
-    let (outer_proving_key, outer_verifying_key) =
-        <N as Network>::OuterSNARK::setup(&outer_circuit, &mut SRS::CircuitSpecific(rng)).unwrap();
-
-    // // NOTE: Do not change this to `N::inner_circuit_id()` as that will load the *saved* inner circuit VK.
-    // let inner_circuit_id = <N as Network>::inner_circuit_id_crh()
-    //     .hash_bits(&outer_verifying_key.to_minimal_bits())
-    //     .unwrap()
-    //     .into();
-
-    let outer_proof = <N as Network>::OuterSNARK::prove(&outer_proving_key, &outer_circuit, rng).unwrap();
-    assert_eq!(N::OUTER_PROOF_SIZE_IN_BYTES, outer_proof.to_bytes_le().unwrap().len());
-
-    // Verify that the outer circuit proof passes.
-    assert!(<N as Network>::OuterSNARK::verify(&outer_verifying_key, &outer_public, &outer_proof).unwrap());
+    // Verify that the program proof passes.
+    assert!(execution.verify(transition_id));
 }
 
 mod testnet1 {
     use super::*;
     use crate::testnet1::*;
 
+    const EXPECTED_INPUT_NUM_CONSTRAINTS: usize = 112285;
+    const EXPECTED_OUTPUT_NUM_CONSTRAINTS: usize = 18731;
+
     #[test]
     fn test_dpc_execute_circuits() {
-        dpc_execute_circuits_test::<Testnet1>(253822, 152307);
+        dpc_execute_circuits_test::<Testnet1>(EXPECTED_INPUT_NUM_CONSTRAINTS, EXPECTED_OUTPUT_NUM_CONSTRAINTS, 1, 1);
+    }
+
+    // TODO (raychu86): Move these tests upstream to the VM when variable size output transfers are supported.
+    #[test]
+    fn test_dpc_execute_circuits_variable_inputs_and_outputs() {
+        dpc_execute_circuits_test::<Testnet1>(EXPECTED_INPUT_NUM_CONSTRAINTS, EXPECTED_OUTPUT_NUM_CONSTRAINTS, 2, 2);
+        dpc_execute_circuits_test::<Testnet1>(EXPECTED_INPUT_NUM_CONSTRAINTS, EXPECTED_OUTPUT_NUM_CONSTRAINTS, 4, 4);
+    }
+
+    #[test]
+    fn test_dpc_execute_circuits_variable_inputs_and_outputs_large() {
+        dpc_execute_circuits_test::<Testnet1>(EXPECTED_INPUT_NUM_CONSTRAINTS, EXPECTED_OUTPUT_NUM_CONSTRAINTS, 1, 8);
+        dpc_execute_circuits_test::<Testnet1>(EXPECTED_INPUT_NUM_CONSTRAINTS, EXPECTED_OUTPUT_NUM_CONSTRAINTS, 8, 1);
     }
 }
 
@@ -193,8 +279,23 @@ mod testnet2 {
     use super::*;
     use crate::testnet2::*;
 
+    const EXPECTED_INPUT_NUM_CONSTRAINTS: usize = 112285;
+    const EXPECTED_OUTPUT_NUM_CONSTRAINTS: usize = 18731;
+
     #[test]
     fn test_dpc_execute_circuits() {
-        dpc_execute_circuits_test::<Testnet2>(253822, 242379);
+        dpc_execute_circuits_test::<Testnet2>(EXPECTED_INPUT_NUM_CONSTRAINTS, EXPECTED_OUTPUT_NUM_CONSTRAINTS, 1, 1);
+    }
+
+    #[test]
+    fn test_dpc_execute_circuits_variable_inputs_and_outputs() {
+        dpc_execute_circuits_test::<Testnet2>(EXPECTED_INPUT_NUM_CONSTRAINTS, EXPECTED_OUTPUT_NUM_CONSTRAINTS, 2, 2);
+        dpc_execute_circuits_test::<Testnet2>(EXPECTED_INPUT_NUM_CONSTRAINTS, EXPECTED_OUTPUT_NUM_CONSTRAINTS, 4, 4);
+    }
+
+    #[test]
+    fn test_dpc_execute_circuits_variable_inputs_and_outputs_large() {
+        dpc_execute_circuits_test::<Testnet2>(EXPECTED_INPUT_NUM_CONSTRAINTS, EXPECTED_OUTPUT_NUM_CONSTRAINTS, 1, 8);
+        dpc_execute_circuits_test::<Testnet2>(EXPECTED_INPUT_NUM_CONSTRAINTS, EXPECTED_OUTPUT_NUM_CONSTRAINTS, 8, 1);
     }
 }

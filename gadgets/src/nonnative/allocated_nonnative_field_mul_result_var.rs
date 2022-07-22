@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,26 +14,24 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-use std::marker::PhantomData;
-
-use num_bigint::BigUint;
-
 use crate::{
     bits::Boolean,
     fields::FpGadget,
+    nonnative::{
+        reduce::{bigint_to_basefield, limbs_to_bigint, Reducer},
+        AllocatedNonNativeFieldVar,
+    },
     traits::{alloc::AllocGadget, fields::FieldGadget},
+};
+use snarkvm_algorithms::{
+    overhead,
+    snark::marlin::params::{get_params, OptimizationType},
 };
 use snarkvm_fields::{FieldParameters, PrimeField};
 use snarkvm_r1cs::{errors::SynthesisError, ConstraintSystem};
 
-use crate::{
-    nonnative::{
-        params::{get_params, OptimizationType},
-        reduce::{bigint_to_basefield, limbs_to_bigint, Reducer},
-        AllocatedNonNativeFieldVar,
-    },
-    overhead,
-};
+use core::marker::PhantomData;
+use num_bigint::BigUint;
 
 /// The allocated form of `NonNativeFieldMulResultVar` (introduced below)
 #[derive(Debug)]
@@ -52,11 +50,8 @@ impl<TargetField: PrimeField, BaseField: PrimeField> AllocatedNonNativeFieldMulR
         cs: &mut CS,
         src: &AllocatedNonNativeFieldVar<TargetField, BaseField>,
     ) -> Result<Self, SynthesisError> {
-        let field_parameters = get_params(
-            TargetField::size_in_bits(),
-            BaseField::size_in_bits(),
-            src.get_optimization_type(),
-        );
+        let field_parameters =
+            get_params(TargetField::size_in_bits(), BaseField::size_in_bits(), src.get_optimization_type());
 
         let mut limbs = src.limbs.clone();
         limbs.reverse();
@@ -65,20 +60,12 @@ impl<TargetField: PrimeField, BaseField: PrimeField> AllocatedNonNativeFieldMulR
 
         let prod_of_num_of_additions = src.num_of_additions_over_normal_form + BaseField::one();
 
-        Ok(Self {
-            limbs,
-            prod_of_num_of_additions,
-            target_phantom: PhantomData,
-        })
+        Ok(Self { limbs, prod_of_num_of_additions, target_phantom: PhantomData })
     }
 
     /// Get the value of the multiplication result
     pub fn value(&self) -> Result<TargetField, SynthesisError> {
-        let params = get_params(
-            TargetField::size_in_bits(),
-            BaseField::size_in_bits(),
-            self.get_optimization_type(),
-        );
+        let params = get_params(TargetField::size_in_bits(), BaseField::size_in_bits(), self.get_optimization_type());
 
         let p_representations =
             AllocatedNonNativeFieldVar::<TargetField, BaseField>::get_limbs_representations_from_big_integer(
@@ -102,11 +89,8 @@ impl<TargetField: PrimeField, BaseField: PrimeField> AllocatedNonNativeFieldMulR
         &self,
         cs: &mut CS,
     ) -> Result<AllocatedNonNativeFieldVar<TargetField, BaseField>, SynthesisError> {
-        let field_parameters = get_params(
-            TargetField::size_in_bits(),
-            BaseField::size_in_bits(),
-            self.get_optimization_type(),
-        );
+        let field_parameters =
+            get_params(TargetField::size_in_bits(), BaseField::size_in_bits(), self.get_optimization_type());
 
         // Step 1: Get the modulus p.
         let p_representations =
@@ -118,10 +102,8 @@ impl<TargetField: PrimeField, BaseField: PrimeField> AllocatedNonNativeFieldMulR
 
         let mut p_gadget_limbs = Vec::new();
         for (i, limb) in p_representations.iter().enumerate() {
-            p_gadget_limbs.push(FpGadget::<BaseField>::alloc_constant(
-                cs.ns(|| format!("alloc_constant_{}", i)),
-                || Ok(limb),
-            )?);
+            p_gadget_limbs
+                .push(FpGadget::<BaseField>::alloc_constant(cs.ns(|| format!("alloc_constant_{}", i)), || Ok(limb))?);
         }
         let p_gadget = AllocatedNonNativeFieldVar::<TargetField, BaseField> {
             limbs: p_gadget_limbs,
@@ -201,11 +183,7 @@ impl<TargetField: PrimeField, BaseField: PrimeField> AllocatedNonNativeFieldMulR
 
         let r_gadget = AllocatedNonNativeFieldVar::<TargetField, BaseField>::alloc(cs.ns(|| "r"), || self.value())?;
 
-        let params = get_params(
-            TargetField::size_in_bits(),
-            BaseField::size_in_bits(),
-            self.get_optimization_type(),
-        );
+        let params = get_params(TargetField::size_in_bits(), BaseField::size_in_bits(), self.get_optimization_type());
 
         // Step 4: Reduce `self` and `other` if neceessary
         let mut prod_limbs = Vec::new();

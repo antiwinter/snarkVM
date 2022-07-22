@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,16 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-use rand::{
-    thread_rng,
-    SeedableRng,
-    {self},
-};
-use rand_xorshift::XorShiftRng;
+use rand::thread_rng;
 
 use snarkvm_fields::Field;
 use snarkvm_r1cs::{ConstraintSystem, TestConstraintSystem};
-use snarkvm_utilities::{bititerator::BitIteratorBE, rand::UniformRand};
+use snarkvm_utilities::{
+    bititerator::BitIteratorBE,
+    rand::{test_rng, Uniform},
+};
 
 use crate::{
     bits::Boolean,
@@ -51,9 +49,7 @@ fn field_test<NativeF: Field, F: Field, FG: FieldGadget<NativeF, F>, CS: Constra
     assert_ne!(one, zero);
 
     let one_dup = zero.add(cs.ns(|| "zero_plus_one"), &one).unwrap();
-    one_dup
-        .enforce_equal(&mut cs.ns(|| "one_plus_zero_equals"), &one)
-        .unwrap();
+    one_dup.enforce_equal(&mut cs.ns(|| "one_plus_zero_equals"), &one).unwrap();
     assert_eq!(one_dup, one);
 
     let two = one.add(cs.ns(|| "one_plus_one"), &one).unwrap();
@@ -69,25 +65,19 @@ fn field_test<NativeF: Field, F: Field, FG: FieldGadget<NativeF, F>, CS: Constra
     let a_plus_zero = a.add(cs.ns(|| "a_plus_zero"), &zero).unwrap();
     assert_eq!(a_plus_zero, a);
     assert_eq!(a_plus_zero.get_value().unwrap(), a_native);
-    a_plus_zero
-        .enforce_equal(&mut cs.ns(|| "a_plus_zero_equals?"), &a)
-        .unwrap();
+    a_plus_zero.enforce_equal(&mut cs.ns(|| "a_plus_zero_equals?"), &a).unwrap();
 
     // a - 0 = a
     let a_minus_zero = a.sub(cs.ns(|| "a_minus_zero"), &zero).unwrap();
     assert_eq!(a_minus_zero, a);
     assert_eq!(a_minus_zero.get_value().unwrap(), a_native);
-    a_minus_zero
-        .enforce_equal(&mut cs.ns(|| "a_minus_zero_equals?"), &a)
-        .unwrap();
+    a_minus_zero.enforce_equal(&mut cs.ns(|| "a_minus_zero_equals?"), &a).unwrap();
 
     // a - a = 0
     let a_minus_a = a.sub(cs.ns(|| "a_minus_a"), &a).unwrap();
     assert_eq!(a_minus_a, zero);
     assert_eq!(a_minus_a.get_value().unwrap(), zero_native);
-    a_minus_a
-        .enforce_equal(&mut cs.ns(|| "a_minus_a_equals?"), &zero)
-        .unwrap();
+    a_minus_a.enforce_equal(&mut cs.ns(|| "a_minus_a_equals?"), &zero).unwrap();
 
     // a + b = b + a
     let a_b = a.add(cs.ns(|| "a_plus_b"), &b).unwrap();
@@ -109,19 +99,14 @@ fn field_test<NativeF: Field, F: Field, FG: FieldGadget<NativeF, F>, CS: Constra
     assert_eq!(b_times_a_plus_b.get_value().unwrap(), b_native * (b_native + a_native));
     assert_eq!(b_times_a_plus_b.get_value().unwrap(), (b_native + a_native) * b_native);
     assert_eq!(b_times_a_plus_b.get_value().unwrap(), (a_native + b_native) * b_native);
-    b_times_b_plus_a
-        .enforce_equal(&mut cs.ns(|| "b*(a+b) == b * (b+a)"), &b_times_a_plus_b)
-        .unwrap();
+    b_times_b_plus_a.enforce_equal(&mut cs.ns(|| "b*(a+b) == b * (b+a)"), &b_times_a_plus_b).unwrap();
 
     // a * 0 = 0
     assert_eq!(a.mul(cs.ns(|| "a_times_zero"), &zero).unwrap(), zero);
 
     // a * 1 = a
     assert_eq!(a.mul(cs.ns(|| "a_times_one"), &one).unwrap(), a);
-    assert_eq!(
-        a.mul(cs.ns(|| "a_times_one2"), &one).unwrap().get_value().unwrap(),
-        a_native * one_native
-    );
+    assert_eq!(a.mul(cs.ns(|| "a_times_one2"), &one).unwrap().get_value().unwrap(), a_native * one_native);
 
     // a * b = b * a
     let ab = a.mul(cs.ns(|| "a_times_b"), &b).unwrap();
@@ -141,20 +126,13 @@ fn field_test<NativeF: Field, F: Field, FG: FieldGadget<NativeF, F>, CS: Constra
     assert_eq!(aa, a_squared);
     assert_eq!(aa.get_value().unwrap(), a_native.square());
 
-    let aa = a
-        .mul_by_constant(cs.ns(|| "a * a via mul_by_const"), &a.get_value().unwrap())
-        .unwrap();
-    a_squared
-        .enforce_equal(&mut cs.ns(|| "a^2 == a*a via mul_by_const"), &aa)
-        .unwrap();
+    let aa = a.mul_by_constant(cs.ns(|| "a * a via mul_by_const"), &a.get_value().unwrap()).unwrap();
+    a_squared.enforce_equal(&mut cs.ns(|| "a^2 == a*a via mul_by_const"), &aa).unwrap();
     assert_eq!(aa, a_squared);
     assert_eq!(aa.get_value().unwrap(), a_native.square());
 
-    let a_b2 = a
-        .add_constant(cs.ns(|| "a + b via add_const"), &b.get_value().unwrap())
-        .unwrap();
-    a_b.enforce_equal(&mut cs.ns(|| "a + b == a + b via add_const"), &a_b2)
-        .unwrap();
+    let a_b2 = a.add_constant(cs.ns(|| "a + b via add_const"), &b.get_value().unwrap()).unwrap();
+    a_b.enforce_equal(&mut cs.ns(|| "a + b == a + b via add_const"), &a_b2).unwrap();
     assert_eq!(a_b, a_b2);
 
     let a_inv = a.inverse(cs.ns(|| "a_inv")).unwrap();
@@ -163,38 +141,30 @@ fn field_test<NativeF: Field, F: Field, FG: FieldGadget<NativeF, F>, CS: Constra
     assert_eq!(a_inv.get_value().unwrap(), a_native.inverse().unwrap());
     // a * a * a = a^3
     let bits = BitIteratorBE::new([0x3]).map(Boolean::constant).collect::<Vec<_>>();
-    assert_eq!(
-        a_native * (a_native * a_native),
-        a.pow(cs.ns(|| "test_pow"), &bits).unwrap().get_value().unwrap()
-    );
+    assert_eq!(a_native * (a_native * a_native), a.pow(cs.ns(|| "test_pow"), &bits).unwrap().get_value().unwrap());
 
     // a * a * a = a^3
     let mut constants = [NativeF::zero(); 4];
     for c in &mut constants {
-        *c = UniformRand::rand(&mut thread_rng());
+        *c = Uniform::rand(&mut thread_rng());
         println!("Current c[i]: {:?}", c);
     }
     let bits = [Boolean::constant(false), Boolean::constant(true)];
     let lookup_result = FG::two_bit_lookup(cs.ns(|| "Lookup"), &bits, constants.as_ref()).unwrap();
     assert_eq!(lookup_result.get_value().unwrap(), constants[2]);
 
-    let negone: NativeF = UniformRand::rand(&mut thread_rng());
+    let negone: NativeF = Uniform::rand(&mut thread_rng());
 
     let n = FG::alloc(&mut cs.ns(|| "alloc new var"), || Ok(negone)).unwrap();
     let _ = n.to_bytes(&mut cs.ns(|| "ToBytes")).unwrap();
     let _ = n.to_bytes_strict(&mut cs.ns(|| "ToBytes Strict")).unwrap();
 
     let ab_false = a
-        .conditionally_add_constant(
-            cs.ns(|| "Add bool with coeff false"),
-            &Boolean::constant(false),
-            b_native,
-        )
+        .conditionally_add_constant(cs.ns(|| "Add bool with coeff false"), &Boolean::constant(false), b_native)
         .unwrap();
     assert_eq!(ab_false.get_value().unwrap(), a_native);
-    let ab_true = a
-        .conditionally_add_constant(cs.ns(|| "Add bool with coeff true"), &Boolean::constant(true), b_native)
-        .unwrap();
+    let ab_true =
+        a.conditionally_add_constant(cs.ns(|| "Add bool with coeff true"), &Boolean::constant(true), b_native).unwrap();
     assert_eq!(ab_true.get_value().unwrap(), a_native + b_native);
 }
 
@@ -202,7 +172,8 @@ fn random_frobenius_tests<NativeF: Field, F: Field, FG: FieldGadget<NativeF, F>,
     mut cs: CS,
     maxpower: usize,
 ) {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
+
     for i in 0..(maxpower + 1) {
         let mut a = NativeF::rand(&mut rng);
         let mut a_gadget = FG::alloc(cs.ns(|| format!("a_gadget_{:?}", i)), || Ok(a)).unwrap();
@@ -220,7 +191,7 @@ fn bls12_377_field_gadgets_test() {
 
     let mut cs = TestConstraintSystem::<Fq>::new();
 
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     let a = FqGadget::alloc(&mut cs.ns(|| "generate_a"), || Ok(Fq::rand(&mut rng))).unwrap();
     let b = FqGadget::alloc(&mut cs.ns(|| "generate_b"), || Ok(Fq::rand(&mut rng))).unwrap();

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -23,19 +23,19 @@ use crate::{
     CRHGadget,
     FpGadget,
 };
-use snarkvm_algorithms::{crh::PoseidonCRH, crypto_hash::PoseidonDefaultParametersField, traits::CRH};
+use snarkvm_algorithms::{crh::PoseidonCRH, CRH};
 use snarkvm_fields::{FieldParameters, PrimeField};
 use snarkvm_r1cs::{ConstraintSystem, SynthesisError};
 
 use std::borrow::{Borrow, Cow};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PoseidonCRHGadget<F: PrimeField + PoseidonDefaultParametersField, const INPUT_SIZE_FE: usize> {
+pub struct PoseidonCRHGadget<F: PrimeField, const INPUT_SIZE_FE: usize> {
     pub(crate) crh: PoseidonCRH<F, INPUT_SIZE_FE>,
 }
 
-impl<F: PrimeField + PoseidonDefaultParametersField, const INPUT_SIZE_FE: usize>
-    AllocGadget<PoseidonCRH<F, INPUT_SIZE_FE>, F> for PoseidonCRHGadget<F, INPUT_SIZE_FE>
+impl<F: PrimeField, const INPUT_SIZE_FE: usize> AllocGadget<PoseidonCRH<F, INPUT_SIZE_FE>, F>
+    for PoseidonCRHGadget<F, INPUT_SIZE_FE>
 {
     fn alloc_constant<
         Fn: FnOnce() -> Result<T, SynthesisError>,
@@ -45,9 +45,7 @@ impl<F: PrimeField + PoseidonDefaultParametersField, const INPUT_SIZE_FE: usize>
         _cs: CS,
         value_gen: Fn,
     ) -> Result<Self, SynthesisError> {
-        Ok(Self {
-            crh: value_gen()?.borrow().clone(),
-        })
+        Ok(Self { crh: value_gen()?.borrow().clone() })
     }
 
     fn alloc<
@@ -73,8 +71,8 @@ impl<F: PrimeField + PoseidonDefaultParametersField, const INPUT_SIZE_FE: usize>
     }
 }
 
-impl<F: PrimeField + PoseidonDefaultParametersField, const INPUT_SIZE_FE: usize>
-    CRHGadget<PoseidonCRH<F, INPUT_SIZE_FE>, F> for PoseidonCRHGadget<F, INPUT_SIZE_FE>
+impl<F: PrimeField, const INPUT_SIZE_FE: usize> CRHGadget<PoseidonCRH<F, INPUT_SIZE_FE>, F>
+    for PoseidonCRHGadget<F, INPUT_SIZE_FE>
 {
     type OutputGadget = FpGadget<F>;
 
@@ -86,10 +84,7 @@ impl<F: PrimeField + PoseidonDefaultParametersField, const INPUT_SIZE_FE: usize>
         // Pad the input if necessary.
         let input = {
             let input_size_bits: usize = INPUT_SIZE_FE * <F as PrimeField>::Parameters::CAPACITY as usize;
-            assert!(
-                input.len() <= input_size_bits,
-                "PoseidonCRHGadget input bits exceeds supported input size"
-            );
+            assert!(input.len() <= input_size_bits, "PoseidonCRHGadget input bits exceeds supported input size");
 
             let mut input = Cow::Borrowed(&input);
             if input.len() < input_size_bits {
@@ -102,7 +97,7 @@ impl<F: PrimeField + PoseidonDefaultParametersField, const INPUT_SIZE_FE: usize>
 
         let mut sponge = PoseidonSpongeGadget::with_parameters(cs.ns(|| "alloc"), &self.crh.parameters().clone());
         sponge.absorb(cs.ns(|| "absorb"), field_input.iter())?;
-        let res = sponge.squeeze_field_elements(cs.ns(|| "squeeze"), 1)?;
+        let res = sponge.squeeze(cs.ns(|| "squeeze"), 1)?;
         Ok(res[0].clone())
     }
 
@@ -124,7 +119,7 @@ impl<F: PrimeField + PoseidonDefaultParametersField, const INPUT_SIZE_FE: usize>
 
         let mut sponge = PoseidonSpongeGadget::with_parameters(cs.ns(|| "alloc"), self.crh.parameters());
         sponge.absorb(cs.ns(|| "absorb"), input.iter())?;
-        let res = sponge.squeeze_field_elements(cs.ns(|| "squeeze"), 1)?;
+        let res = sponge.squeeze(cs.ns(|| "squeeze"), 1)?;
         Ok(res[0].clone())
     }
 }

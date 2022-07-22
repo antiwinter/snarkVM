@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -17,11 +17,11 @@
 use snarkvm_fields::{traits::FftParameters, FftField, Field, LegendreSymbol, PrimeField, SquareRootField};
 use snarkvm_utilities::{
     io::Cursor,
-    serialize::{CanonicalDeserialize, CanonicalSerialize, Flags, SWFlags},
+    rand::test_rng,
+    serialize::{CanonicalDeserialize, Flags, SWFlags},
 };
 
-use rand::{Rng, SeedableRng};
-use rand_xorshift::XorShiftRng;
+use rand::Rng;
 
 pub const ITERATIONS: u32 = 10;
 
@@ -172,7 +172,7 @@ fn random_expansion_tests<F: Field, R: Rng>(rng: &mut R) {
 }
 
 fn random_string_tests<F: PrimeField>() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     {
         let a = "84395729384759238745923745892374598234705297301958723458712394587103249587213984572934750213947582345792304758273458972349582734958273495872304598234";
@@ -212,7 +212,7 @@ fn random_string_tests<F: PrimeField>() {
 }
 
 fn random_sqrt_tests<F: SquareRootField>() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..ITERATIONS {
         let a = F::rand(&mut rng);
@@ -280,6 +280,7 @@ pub fn field_test<F: Field>(a: F, b: F) {
     assert_eq!((a + b) + a, a + (b + a));
     // (a + b).double() = (a + b) + (b + a)
     assert_eq!((a + b).double(), (a + b) + (b + a));
+    assert_eq!(F::half(), F::one().double().inverse().unwrap());
 
     // a * 0 = 0
     assert_eq!(a * zero, zero);
@@ -302,7 +303,7 @@ pub fn field_test<F: Field>(a: F, b: F) {
     // (a - b)^2 = (-(b - a))^2
     assert_eq!((a - b).square(), (-(b - a)).square());
 
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
     random_negation_tests::<F, _>(&mut rng);
     random_addition_tests::<F, _>(&mut rng);
     random_subtraction_tests::<F, _>(&mut rng);
@@ -388,7 +389,7 @@ pub fn sqrt_field_test<F: SquareRootField>(elem: F) {
 }
 
 pub fn frobenius_test<F: Field, C: AsRef<[u64]>>(characteristic: C, maxpower: usize) {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..ITERATIONS {
         let a = F::rand(&mut rng);
@@ -407,40 +408,43 @@ pub fn frobenius_test<F: Field, C: AsRef<[u64]>>(characteristic: C, maxpower: us
         }
     }
 }
-
 pub fn field_serialization_test<F: Field>() {
-    let buf_size = F::SERIALIZED_SIZE;
-
     let mut rng = &mut rand::thread_rng();
+    use snarkvm_utilities::serialize::{Compress, Validate};
+    let modes = [
+        (Compress::No, Validate::No),
+        (Compress::Yes, Validate::No),
+        (Compress::Yes, Validate::Yes),
+        (Compress::No, Validate::Yes),
+    ];
 
     for _ in 0..ITERATIONS {
         let a = F::rand(&mut rng);
-        {
-            let mut serialized = vec![0u8; buf_size];
-            let mut cursor = Cursor::new(&mut serialized[..]);
-            CanonicalSerialize::serialize(&a, &mut cursor).unwrap();
+        for (compress, validate) in modes {
+            let serialized_size = a.serialized_size(compress);
+            let mut serialized = vec![0u8; serialized_size];
+            let mut cursor = Cursor::new(&mut serialized);
+            a.serialize_with_mode(&mut cursor, compress).unwrap();
             let serialized2 = bincode::serialize(&a).unwrap();
             assert_eq!(serialized, serialized2);
 
             let mut cursor = Cursor::new(&serialized[..]);
-            let b: F = CanonicalDeserialize::deserialize(&mut cursor).unwrap();
+            let b = F::deserialize_with_mode(&mut cursor, compress, validate).unwrap();
             let c: F = bincode::deserialize(&serialized).unwrap();
             assert_eq!(a, b);
             assert_eq!(a, c);
         }
-
         {
             let mut serialized = vec![0u8; a.uncompressed_size()];
             let mut cursor = Cursor::new(&mut serialized[..]);
             a.serialize_uncompressed(&mut cursor).unwrap();
-
             let mut cursor = Cursor::new(&serialized[..]);
             let b = F::deserialize_uncompressed(&mut cursor).unwrap();
             assert_eq!(a, b);
         }
 
         {
-            let mut serialized = vec![0u8; buf_size];
+            let mut serialized = vec![0u8; F::one().serialized_size_with_flags::<SWFlags>()];
             let mut cursor = Cursor::new(&mut serialized[..]);
             a.serialize_with_flags(&mut cursor, SWFlags::from_y_sign(true)).unwrap();
             let mut cursor = Cursor::new(&serialized[..]);
@@ -449,33 +453,29 @@ pub fn field_serialization_test<F: Field>() {
             assert!(!flags.is_infinity());
             assert_eq!(a, b);
         }
-
         #[derive(Default, Clone, Copy, Debug)]
         struct DummyFlags;
         impl Flags for DummyFlags {
+            const BIT_SIZE: usize = 200;
+
             fn u8_bitmask(&self) -> u8 {
                 0
             }
 
-            fn from_u8(_value: u8) -> Self {
-                DummyFlags
+            fn from_u8(_value: u8) -> Option<Self> {
+                Some(DummyFlags)
             }
 
-            fn from_u8_remove_flags(_value: &mut u8) -> Self {
-                DummyFlags
-            }
-
-            fn num_bits() -> usize {
-                200
+            fn from_u8_remove_flags(_value: &mut u8) -> Option<Self> {
+                Some(DummyFlags)
             }
         }
 
-        use snarkvm_utilities::errors::SerializationError;
+        use snarkvm_utilities::serialize::SerializationError;
         {
-            let mut serialized = vec![0; buf_size];
+            let mut serialized = vec![0; F::one().serialized_size_with_flags::<DummyFlags>()];
             assert!(matches!(
-                a.serialize_with_flags(&mut &mut serialized[..], DummyFlags)
-                    .unwrap_err(),
+                a.serialize_with_flags(&mut serialized[..], DummyFlags).unwrap_err(),
                 SerializationError::NotEnoughSpace
             ));
             assert!(matches!(
@@ -485,12 +485,13 @@ pub fn field_serialization_test<F: Field>() {
         }
 
         {
-            let mut serialized = vec![0; buf_size - 1];
-            let mut cursor = Cursor::new(&mut serialized[..]);
-            CanonicalSerialize::serialize(&a, &mut cursor).unwrap_err();
-
-            let mut cursor = Cursor::new(&serialized[..]);
-            <F as CanonicalDeserialize>::deserialize(&mut cursor).unwrap_err();
+            for (compress, validate) in modes {
+                let mut serialized = vec![0; F::one().serialized_size(compress) - 1];
+                let mut cursor = Cursor::new(&mut serialized[..]);
+                a.serialize_with_mode(&mut cursor, compress).unwrap_err();
+                let mut cursor = Cursor::new(&serialized[..]);
+                <F as CanonicalDeserialize>::deserialize_with_mode(&mut cursor, compress, validate).unwrap_err();
+            }
         }
     }
 }

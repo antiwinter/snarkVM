@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,16 +14,15 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::{One, Zero};
+use crate::{One, PrimeField, Zero};
 use snarkvm_utilities::{
     bititerator::BitIteratorBE,
-    rand::UniformRand,
+    rand::Uniform,
     serialize::{
         CanonicalDeserialize,
         CanonicalDeserializeWithFlags,
         CanonicalSerialize,
         CanonicalSerializeWithFlags,
-        ConstantSerializedSize,
         EmptyFlags,
         Flags,
     },
@@ -57,7 +56,7 @@ pub trait Field:
     + One
     + Ord
     + Neg<Output = Self>
-    + UniformRand
+    + Uniform
     + Zero
     + Sized
     + Hash
@@ -87,13 +86,23 @@ pub trait Field:
     + core::iter::Product<Self>
     + for<'a> core::iter::Product<&'a Self>
     + CanonicalSerialize
-    + ConstantSerializedSize
     + CanonicalSerializeWithFlags
     + CanonicalDeserialize
     + CanonicalDeserializeWithFlags
     + Serialize
     + for<'a> Deserialize<'a>
 {
+    type BasePrimeField: PrimeField;
+
+    /// Constructs an element of `Self` from an element of the base
+    /// prime field.
+    fn from_base_prime_field(other: Self::BasePrimeField) -> Self;
+
+    /// Returns the constant 2^{-1}.
+    fn half() -> Self {
+        Self::from_base_prime_field(Self::BasePrimeField::half())
+    }
+
     /// Returns the characteristic of the field.
     fn characteristic<'a>() -> &'a [u64];
 
@@ -124,6 +133,7 @@ pub trait Field:
 
     /// Exponentiates this element by a number represented with `u64` limbs,
     /// least significant limb first.
+    #[must_use]
     fn pow<S: AsRef<[u64]>>(&self, exp: S) -> Self {
         let mut res = Self::one();
 
@@ -143,8 +153,6 @@ pub trait Field:
             if i {
                 res *= self;
             }
-
-            println!("");
         }
         res
     }

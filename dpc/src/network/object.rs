@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -117,7 +117,7 @@ impl<
         }
 
         let buffer = Vec::from_base32(&data)?;
-        Ok(Self::read_le(&buffer[..])?)
+        Ok(Self::read_le(&*buffer)?)
     }
 }
 

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -17,14 +17,21 @@
 //! Generic PoSW Miner and Verifier, compatible with any implementer of the SNARK trait.
 
 use crate::{
-    posw::PoSWCircuit, BlockHeader, BlockHeaderMetadata, BlockTemplate, Network, PoSWError, PoSWProof, PoSWScheme,
+    posw::PoSWCircuit,
+    BlockHeader,
+    BlockHeaderMetadata,
+    BlockTemplate,
+    Network,
+    PoSWError,
+    PoSWProof,
+    PoSWScheme,
 };
 use snarkvm_algorithms::{traits::SNARK, SRS};
-use snarkvm_utilities::{FromBytes, ToBytes, UniformRand};
+use snarkvm_utilities::Uniform;
 
-use chrono::Utc;
 use core::sync::atomic::AtomicBool;
 use rand::{CryptoRng, Rng};
+use time::OffsetDateTime;
 
 /// A Proof of Succinct Work miner and verifier.
 #[derive(Clone)]
@@ -42,15 +49,11 @@ impl<N: Network> PoSWScheme<N> for PoSW<N> {
     ///
     fn setup<R: Rng + CryptoRng>(
         srs: &mut SRS<R, <<N as Network>::PoSWSNARK as SNARK>::UniversalSetupParameters>,
-        gpu_index: i16,
     ) -> Result<Self, PoSWError> {
         let (proving_key, verifying_key) =
-            <<N as Network>::PoSWSNARK as SNARK>::setup::<_, R>(&PoSWCircuit::<N>::blank()?, srs, gpu_index)?;
+            <<N as Network>::PoSWSNARK as SNARK>::setup::<_, R>(&PoSWCircuit::<N>::blank()?, srs)?;
 
-        Ok(Self {
-            proving_key: Some(proving_key),
-            verifying_key,
-        })
+        Ok(Self { proving_key: Some(proving_key), verifying_key })
     }
 
     ///
@@ -88,34 +91,27 @@ impl<N: Network> PoSWScheme<N> for PoSW<N> {
         block_template: &BlockTemplate<N>,
         terminator: &AtomicBool,
         rng: &mut R,
-        gpu_index: i16,
     ) -> Result<BlockHeader<N>, PoSWError> {
         const MAXIMUM_MINING_DURATION: i64 = 600; // 600 seconds = 10 minutes.
 
         // Instantiate the circuit.
-        let mut circuit = PoSWCircuit::<N>::new(block_template, UniformRand::rand(rng))?;
+        let mut circuit = PoSWCircuit::<N>::new(block_template, Uniform::rand(rng))?;
 
         let mut iteration = 1;
         loop {
             // Every 100 iterations, check that the miner is still within the allowed mining duration.
             if iteration % 100 == 0
-                && Utc::now().timestamp() >= block_template.block_timestamp() + MAXIMUM_MINING_DURATION
+                && OffsetDateTime::now_utc().unix_timestamp()
+                    >= block_template.block_timestamp() + MAXIMUM_MINING_DURATION
             {
-                return Err(PoSWError::Message(
-                    "Failed mine block in the allowed mining duration".to_string(),
-                ));
+                return Err(PoSWError::Message("Failed mine block in the allowed mining duration".to_string()));
             }
 
             // Run one iteration of PoSW.
-            let proof = self.prove_once_unchecked(&mut circuit, block_template, terminator, rng, gpu_index)?;
+            let proof = self.prove_once_unchecked(&mut circuit, terminator, rng)?;
 
             // Check if the updated block header is valid.
-            if self.verify(
-                block_template.block_height(),
-                block_template.difficulty_target(),
-                &circuit.to_public_inputs(),
-                &proof,
-            ) {
+            if self.verify(block_template.difficulty_target(), &circuit.to_public_inputs(), &proof) {
                 // Construct a block header.
                 return Ok(BlockHeader::from(
                     block_template.previous_ledger_root(),
@@ -138,46 +134,23 @@ impl<N: Network> PoSWScheme<N> for PoSW<N> {
     fn prove_once_unchecked<R: Rng + CryptoRng>(
         &self,
         circuit: &mut PoSWCircuit<N>,
-        block_template: &BlockTemplate<N>,
         terminator: &AtomicBool,
         rng: &mut R,
-        gpu_index: i16,
     ) -> Result<PoSWProof<N>, PoSWError> {
         let pk = self.proving_key.as_ref().expect("tried to mine without a PK set up");
 
-        let nn = UniformRand::rand(rng);
-        println!("proving with {}", nn);
         // Sample a random nonce.
-        circuit.set_nonce(nn);
+        circuit.set_nonce(Uniform::rand(rng));
 
-        println!("posw!! new nonce {}", circuit.nonce());
-
-
-        // TODO (raychu86): TEMPORARY - Remove this after testnet2 period.
-        // Mine blocks with the deprecated PoSW mode for blocks behind `V12_UPGRADE_BLOCK_HEIGHT`.
-        if <N as Network>::NETWORK_ID == 2 && block_template.block_height() <= crate::testnet2::V12_UPGRADE_BLOCK_HEIGHT
-        {
-            let pk = <crate::testnet2::DeprecatedPoSWSNARK<N> as SNARK>::ProvingKey::from_bytes_le(&pk.to_bytes_le()?)?;
-            // Construct a PoSW proof.
-            Ok(PoSWProof::<N>::new_hiding(
-                <crate::testnet2::DeprecatedPoSWSNARK<N> as SNARK>::prove_with_terminator(
-                    &pk, circuit, terminator, rng, gpu_index,
-                )?
-                .into(),
-            ))
-        } else {
-            // Construct a PoSW proof.
-            Ok(PoSWProof::<N>::new(
-                <<N as Network>::PoSWSNARK as SNARK>::prove_with_terminator(pk, circuit, terminator, rng, gpu_index)?
-                    .into(),
-            ))
-        }
+        // Construct a PoSW proof.
+        Ok(PoSWProof::<N>::new(
+            <<N as Network>::PoSWSNARK as SNARK>::prove_with_terminator(pk, circuit, terminator, rng)?.into(),
+        ))
     }
 
     /// Verifies the Proof of Succinct Work against the nonce, root, and difficulty target.
     fn verify_from_block_header(&self, block_header: &BlockHeader<N>) -> bool {
         self.verify(
-            block_header.height(),
             block_header.difficulty_target(),
             &[*block_header.to_header_root().unwrap(), *block_header.nonce()],
             block_header.proof(),
@@ -185,13 +158,7 @@ impl<N: Network> PoSWScheme<N> for PoSW<N> {
     }
 
     /// Verifies the Proof of Succinct Work against the nonce, root, and difficulty target.
-    fn verify(
-        &self,
-        block_height: u32,
-        difficulty_target: u64,
-        inputs: &[N::InnerScalarField],
-        proof: &PoSWProof<N>,
-    ) -> bool {
+    fn verify(&self, difficulty_target: u64, inputs: &[N::InnerScalarField], proof: &PoSWProof<N>) -> bool {
         // Ensure the difficulty target is met.
         match proof.to_proof_difficulty() {
             Ok(proof_difficulty) => {
@@ -210,20 +177,10 @@ impl<N: Network> PoSWScheme<N> for PoSW<N> {
             }
         };
 
-        // TODO (raychu86): TEMPORARY - Remove this after testnet2 period.
-        // Verify blocks with the deprecated PoSW mode for blocks behind `V12_UPGRADE_BLOCK_HEIGHT`.
-        if <N as Network>::NETWORK_ID == 2 && block_height <= crate::testnet2::V12_UPGRADE_BLOCK_HEIGHT {
-            // Ensure the proof type is hiding.
-            if !proof.is_hiding() {
-                #[cfg(debug_assertions)]
-                eprintln!("[deprecated] PoSW proof for block {} should be hiding", block_height);
-                return false;
-            }
-        }
         // Ensure the proof type is not hiding.
-        else if proof.is_hiding() {
+        if proof.is_hiding() {
             #[cfg(debug_assertions)]
-            eprintln!("PoSW proof for block {} should not be hiding", block_height);
+            eprintln!("PoSW proof should be non-hiding");
             return false;
         }
 
@@ -266,14 +223,9 @@ mod tests {
         );
 
         // Construct a block header.
-        let block_header = Testnet2::posw()
-            .mine(&block_template, &AtomicBool::new(false), &mut thread_rng())
-            .unwrap();
+        let block_header = Testnet2::posw().mine(&block_template, &AtomicBool::new(false), &mut thread_rng()).unwrap();
 
-        assert_eq!(
-            block_header.proof().to_bytes_le().unwrap().len(),
-            Testnet2::HEADER_PROOF_SIZE_IN_BYTES
-        ); // NOTE: Marlin proofs use compressed serialization
+        assert_eq!(block_header.proof().to_bytes_le().unwrap().len(), Testnet2::HEADER_PROOF_SIZE_IN_BYTES); // NOTE: Marlin proofs use compressed serialization
         assert!(Testnet2::posw().verify_from_block_header(&block_header));
     }
 }

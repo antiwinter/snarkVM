@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -18,9 +18,9 @@ pub(crate) mod g1 {
     use snarkvm_curves::{
         bls12_377::{Fr, G1Affine, G1Projective as G1},
         traits::ProjectiveCurve,
-        Group,
+        AffineCurve,
     };
-    use snarkvm_utilities::rand::UniformRand;
+    use snarkvm_utilities::rand::Uniform;
 
     use criterion::Criterion;
     use rand::SeedableRng;
@@ -72,9 +72,7 @@ pub(crate) mod g1 {
 
         let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
 
-        let v: Vec<(G1, G1Affine)> = (0..SAMPLES)
-            .map(|_| (G1::rand(&mut rng), G1::rand(&mut rng).into()))
-            .collect();
+        let v: Vec<(G1, G1Affine)> = (0..SAMPLES).map(|_| (G1::rand(&mut rng), G1::rand(&mut rng).into())).collect();
 
         let mut count = 0;
         c.bench_function("bls12_377: g1_add_assign_mixed", |c| {
@@ -104,15 +102,32 @@ pub(crate) mod g1 {
             })
         });
     }
+
+    pub fn bench_g1_check_subgroup_membership(c: &mut Criterion) {
+        const SAMPLES: usize = 1000;
+
+        let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+
+        let v: Vec<G1> = (0..SAMPLES).map(|_| G1::rand(&mut rng)).collect();
+        let v = G1::batch_normalization_into_affine(v);
+
+        let mut count = 0;
+        c.bench_function("bls12_377: g1_is_in_correct_subgroup", |c| {
+            c.iter(|| {
+                let result = v[count].is_in_correct_subgroup_assuming_on_curve();
+                count = (count + 1) % SAMPLES;
+                result
+            })
+        });
+    }
 }
 
 pub(crate) mod g2 {
     use snarkvm_curves::{
         bls12_377::{Fr, G2Affine, G2Projective as G2},
         traits::ProjectiveCurve,
-        Group,
     };
-    use snarkvm_utilities::rand::UniformRand;
+    use snarkvm_utilities::rand::Uniform;
 
     use criterion::Criterion;
     use rand::SeedableRng;
@@ -165,9 +180,7 @@ pub(crate) mod g2 {
 
         let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
 
-        let v: Vec<(G2, G2Affine)> = (0..SAMPLES)
-            .map(|_| (G2::rand(&mut rng), G2::rand(&mut rng).into()))
-            .collect();
+        let v: Vec<(G2, G2Affine)> = (0..SAMPLES).map(|_| (G2::rand(&mut rng), G2::rand(&mut rng).into())).collect();
 
         let mut count = 0;
         c.bench_function("bls12_377: g2_add_assign_mixed", |c| {

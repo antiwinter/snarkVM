@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -21,4 +21,3 @@ pub mod encryption;
 pub mod merkle_tree;
 pub mod prf;
 pub mod signature;
-pub mod snark;

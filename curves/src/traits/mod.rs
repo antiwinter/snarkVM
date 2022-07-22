@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -27,4 +27,4 @@ pub mod tests_field;
 pub mod tests_group;
 
 #[cfg(test)]
-pub mod tests_curve;
+pub mod tests_projective;

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -22,7 +22,7 @@ use crate::{
     traits::{AffineCurve, ShortWeierstrassParameters},
 };
 use snarkvm_fields::{Field, Fp2, One, Zero};
-use snarkvm_utilities::{bititerator::BitIteratorBE, errors::SerializationError, serialize::*, ToBytes};
+use snarkvm_utilities::{bititerator::BitIteratorBE, serialize::*, ToBytes};
 
 use std::io::{Result as IoResult, Write};
 
@@ -97,35 +97,27 @@ impl<P: Bls12Parameters> G2Prepared<P> {
     }
 
     pub fn from_affine(q: G2Affine<P>) -> Self {
-        let two_inv = P::Fp::one().double().inverse().unwrap();
         if q.is_zero() {
-            return Self {
-                ell_coeffs: vec![],
-                infinity: true,
-            };
+            return Self { ell_coeffs: vec![], infinity: true };
         }
 
-        let mut r = G2HomProjective {
-            x: q.x,
-            y: q.y,
-            z: Fp2::one(),
-        };
+        let mut r = G2HomProjective { x: q.x, y: q.y, z: Fp2::one() };
 
         let bit_iterator = BitIteratorBE::new(P::X);
         let mut ell_coeffs = Vec::with_capacity(bit_iterator.len());
 
+        // `one_half` = 1/2 in the field.
+        let one_half = P::Fp::half();
+
         for i in bit_iterator.skip(1) {
-            ell_coeffs.push(doubling_step::<P>(&mut r, &two_inv));
+            ell_coeffs.push(doubling_step::<P>(&mut r, &one_half));
 
             if i {
                 ell_coeffs.push(addition_step::<P>(&mut r, &q));
             }
         }
 
-        Self {
-            ell_coeffs,
-            infinity: false,
-        }
+        Self { ell_coeffs, infinity: false }
     }
 }
 

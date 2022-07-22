@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -19,17 +19,13 @@ pub use genesis::*;
 
 const REMOTE_URL: &str = "https://s3-us-west-1.amazonaws.com/aleo.parameters";
 
-// Noop Circuit
-impl_local!(NoopProvingKeyBytes, "./resources/", "noop", "proving");
-impl_local!(NoopVerifyingKeyBytes, "./resources/", "noop", "verifying");
+// Input Circuit
+impl_remote!(InputProvingKeyBytes, REMOTE_URL, "./resources/", "input", "proving");
+impl_local!(InputVerifyingKeyBytes, "./resources/", "input", "verifying");
 
-// Inner Circuit
-impl_remote!(InnerProvingKeyBytes, REMOTE_URL, "./resources/", "inner", "proving");
-impl_local!(InnerVerifyingKeyBytes, "./resources/", "inner", "verifying");
-
-// Outer Circuit
-impl_remote!(OuterProvingKeyBytes, REMOTE_URL, "./resources/", "outer", "proving");
-impl_local!(OuterVerifyingKeyBytes, "./resources/", "outer", "verifying");
+// Output Circuit
+impl_remote!(OutputProvingKeyBytes, REMOTE_URL, "./resources/", "output", "proving");
+impl_local!(OutputVerifyingKeyBytes, "./resources/", "output", "verifying");
 
 // PoSW Circuit
 impl_remote!(PoSWProvingKeyBytes, REMOTE_URL, "./resources/", "posw", "proving");

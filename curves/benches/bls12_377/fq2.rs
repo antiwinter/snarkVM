@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
 
 use snarkvm_curves::bls12_377::Fq2;
 use snarkvm_fields::{Field, SquareRootField};
-use snarkvm_utilities::rand::UniformRand;
+use snarkvm_utilities::rand::Uniform;
 
 use criterion::Criterion;
 use rand::SeedableRng;
@@ -28,9 +28,7 @@ pub(crate) fn bench_fq2_add_assign(c: &mut Criterion) {
 
     let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
 
-    let v: Vec<(Fq2, Fq2)> = (0..SAMPLES)
-        .map(|_| (Fq2::rand(&mut rng), Fq2::rand(&mut rng)))
-        .collect();
+    let v: Vec<(Fq2, Fq2)> = (0..SAMPLES).map(|_| (Fq2::rand(&mut rng), Fq2::rand(&mut rng))).collect();
 
     let mut count = 0;
     c.bench_function("bls12_377: fq2_add_assign", |c| {
@@ -48,9 +46,7 @@ pub(crate) fn bench_fq2_sub_assign(c: &mut Criterion) {
 
     let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
 
-    let v: Vec<(Fq2, Fq2)> = (0..SAMPLES)
-        .map(|_| (Fq2::rand(&mut rng), Fq2::rand(&mut rng)))
-        .collect();
+    let v: Vec<(Fq2, Fq2)> = (0..SAMPLES).map(|_| (Fq2::rand(&mut rng), Fq2::rand(&mut rng))).collect();
 
     let mut count = 0;
     c.bench_function("bls12_377: fq2_sub_assign", |c| {
@@ -68,9 +64,7 @@ pub(crate) fn bench_fq2_mul_assign(c: &mut Criterion) {
 
     let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
 
-    let v: Vec<(Fq2, Fq2)> = (0..SAMPLES)
-        .map(|_| (Fq2::rand(&mut rng), Fq2::rand(&mut rng)))
-        .collect();
+    let v: Vec<(Fq2, Fq2)> = (0..SAMPLES).map(|_| (Fq2::rand(&mut rng), Fq2::rand(&mut rng))).collect();
 
     let mut count = 0;
     c.bench_function("bls12_377: fq2_mul_assign", |c| {

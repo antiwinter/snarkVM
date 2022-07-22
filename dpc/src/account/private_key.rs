@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -25,18 +25,13 @@ use crate::{
 };
 use snarkvm_algorithms::traits::{SignatureScheme, PRF};
 use snarkvm_fields::PrimeField;
-use snarkvm_utilities::{FromBytes, ToBytes, UniformRand};
+use snarkvm_utilities::{FromBytes, ToBytes, Uniform};
 
 use base58::{FromBase58, ToBase58};
 use rand::{CryptoRng, Rng};
 use std::{fmt, str::FromStr};
 
-#[derive(Derivative)]
-#[derivative(
-    Clone(bound = "N: Network"),
-    PartialEq(bound = "N: Network"),
-    Eq(bound = "N: Network")
-)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PrivateKey<N: Network> {
     seed: N::AccountSeed,
     pub(super) sk_sig: N::ProgramScalarField,
@@ -56,10 +51,8 @@ impl<N: Network> PrivateKey<N> {
     }
 
     /// Signs a message using the account private key.
-    pub fn sign<R: Rng + CryptoRng>(&self, message: &[u8], rng: &mut R) -> Result<N::AccountSignature, AccountError> {
-        Ok(N::account_signature_scheme()
-            .sign(&(self.sk_sig, self.r_sig), message, rng)?
-            .into())
+    pub fn sign<R: Rng + CryptoRng>(&self, message: &[bool], rng: &mut R) -> Result<N::AccountSignature, AccountError> {
+        Ok(N::account_signature_scheme().sign(&(self.sk_sig, self.r_sig), message, rng)?.into())
     }
 
     /// Returns the address from the private key.
@@ -91,10 +84,8 @@ impl<N: Network> From<&N::AccountSeed> for PrivateKey<N> {
 
         Self {
             seed: seed.clone(),
-            sk_sig: N::AccountSeedPRF::evaluate(seed, &vec![sk_sig_domain])
-                .expect("Failed to derive private key component for PRF(seed, sk_sig_domain)"),
-            r_sig: N::AccountSeedPRF::evaluate(seed, &vec![r_sig_domain])
-                .expect("Failed to derive private key component for PRF(seed, r_sig_domain)"),
+            sk_sig: N::AccountSeedPRF::prf(seed, &vec![sk_sig_domain]),
+            r_sig: N::AccountSeedPRF::prf(seed, &vec![r_sig_domain]),
         }
     }
 }
@@ -121,9 +112,7 @@ impl<N: Network> fmt::Display for PrivateKey<N> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut private_key = [0u8; 43];
         private_key[0..11].copy_from_slice(&account_format::PRIVATE_KEY_PREFIX);
-        self.seed
-            .write_le(&mut private_key[11..43])
-            .expect("seed formatting failed");
+        self.seed.write_le(&mut private_key[11..43]).expect("seed formatting failed");
 
         write!(f, "{}", private_key.to_base58())
     }

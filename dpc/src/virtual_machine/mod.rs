@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,9 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-pub mod amount;
-pub use amount::*;
-
 pub mod builder;
 pub use builder::*;
 
@@ -29,11 +26,8 @@ pub use execution::*;
 pub mod function_inputs;
 pub use function_inputs::*;
 
-pub mod function_type;
-pub use function_type::*;
-
-pub mod noop;
-pub use noop::*;
+pub mod kernel_proof;
+pub use kernel_proof::*;
 
 pub mod operation;
 pub use operation::*;

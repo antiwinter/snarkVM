@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -16,31 +16,43 @@
 
 use rand::{
     distributions::{Distribution, Standard},
+    rngs::StdRng,
     Rng,
+    SeedableRng,
 };
+use rand_xorshift::XorShiftRng;
 
-pub trait UniformRand: Sized {
+/// A trait for a uniform random number generator.
+pub trait Uniform: Sized {
+    /// Samples a random value from a uniform distribution.
     fn rand<R: Rng + ?Sized>(rng: &mut R) -> Self;
 }
 
-impl<T> UniformRand for T
+impl<T> Uniform for T
 where
     Standard: Distribution<T>,
 {
     #[inline]
     fn rand<R: Rng + ?Sized>(rng: &mut R) -> Self {
-        println!("Uniform rnd!!!!");
         rng.sample(Standard)
     }
 }
 
-/// Should be used only for tests, not for any real world usage.
-pub fn test_rng() -> rand::rngs::StdRng {
-    use rand::SeedableRng;
-    
-    // arbitrary seed
-    let seed = [
-        1, 0, 0, 0, 23, 0, 0, 0, 200, 1, 0, 0, 210, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ];
-    rand::rngs::StdRng::from_seed(seed)
+/// A fast RNG used **solely** for testing and benchmarking, **not** for any real world purposes.
+pub fn test_rng() -> XorShiftRng {
+    // Obtain the initial seed using entropy provided by the OS.
+    let seed = StdRng::from_entropy().gen();
+    // Use the seed to initialize a fast, non-cryptographic Rng.
+    XorShiftRng::seed_from_u64(seed)
+}
+
+/// A CryptoRNG used **solely** for testing and benchmarking, **not** for any real world purposes.
+pub fn test_crypto_rng() -> StdRng {
+    StdRng::from_entropy()
+}
+
+/// A fixed CryptoRNG used **solely** for **debugging** tests, **not** for any real world purposes.
+pub fn test_crypto_rng_fixed() -> StdRng {
+    let seed = 1245897092u64;
+    StdRng::seed_from_u64(seed)
 }

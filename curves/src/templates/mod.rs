@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -15,9 +15,7 @@
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
 pub mod bls12;
-pub mod bw6;
 pub mod short_weierstrass_jacobian;
-pub mod short_weierstrass_projective;
 pub mod to_field_vec;
 pub mod twisted_edwards_extended;
 

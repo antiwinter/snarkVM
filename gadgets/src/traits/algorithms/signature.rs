@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -20,7 +20,6 @@ use snarkvm_r1cs::{errors::SynthesisError, ConstraintSystem};
 
 use crate::{
     bits::ToBytesGadget,
-    integers::uint::UInt8,
     traits::{alloc::AllocGadget, eq::EqGadget},
     Boolean,
     ToBitsLEGadget,
@@ -41,7 +40,7 @@ pub trait SignatureGadget<S: SignatureScheme, F: Field>: AllocGadget<S, F> {
         &self,
         cs: CS,
         public_key: &Self::PublicKeyGadget,
-        message: &[UInt8],
+        message: &[Boolean],
         signature: &Self::SignatureGadget,
     ) -> Result<Boolean, SynthesisError>;
 }

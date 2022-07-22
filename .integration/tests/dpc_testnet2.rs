@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,21 +14,28 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-use std::sync::atomic::AtomicBool;
-
 use snarkvm_dpc::{prelude::*, testnet2::*};
 use snarkvm_utilities::{FromBytes, ToBytes};
 
-use chrono::Utc;
 use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
+use std::sync::atomic::AtomicBool;
+use time::OffsetDateTime;
 
 #[test]
-fn test_testnet2_inner_circuit_id_sanity_check() {
-    let expected_inner_circuit_id =
-        "ic13cstkmt5j4qqzfu5am8jx2rhxm0hqplyzcgzyueefz7n32xl4h53n4xmxvhjyzaq2c0f7l70a4xszau2ryc".to_string();
-    let candidate_inner_circuit_id = <Testnet2 as Network>::inner_circuit_id().to_string();
-    assert_eq!(expected_inner_circuit_id, candidate_inner_circuit_id);
+fn test_testnet2_input_circuit_id_sanity_check() {
+    let expected_input_circuit_id =
+        "ic1j0ge9dg6p4z94ar8369kcm7y7l2uyaq07lunexjfsl4a4ljv00vmc356shpw90fxhq52majxwvcqzcv5gdk".to_string();
+    let candidate_input_circuit_id = <Testnet2 as Network>::input_circuit_id().to_string();
+    assert_eq!(expected_input_circuit_id, candidate_input_circuit_id);
+}
+
+#[test]
+fn test_testnet2_output_circuit_id_sanity_check() {
+    let expected_output_circuit_id =
+        "oc14asncph3z9d7apw4acpg9n0p6dl52jqhgwjclphf6ec7syvsqharpsy3dkr2vc5cp3xvde3t8yxsqmdq9g6".to_string();
+    let candidate_output_circuit_id = <Testnet2 as Network>::output_circuit_id().to_string();
+    assert_eq!(expected_output_circuit_id, candidate_output_circuit_id);
 }
 
 #[test]
@@ -72,12 +79,10 @@ fn dpc_testnet2_integration_test() {
     let transactions = Transactions::from(&[coinbase_transaction]).unwrap();
 
     let previous_ledger_root = ledger.latest_ledger_root();
-    let timestamp = Utc::now().timestamp();
+    let timestamp = OffsetDateTime::now_utc().unix_timestamp();
     let difficulty_target =
         Blocks::<Testnet2>::compute_difficulty_target(previous_block.header(), timestamp, block_height);
-    let cumulative_weight = previous_block
-        .cumulative_weight()
-        .saturating_add((u64::MAX / difficulty_target) as u128);
+    let cumulative_weight = previous_block.cumulative_weight().saturating_add((u64::MAX / difficulty_target) as u128);
 
     // Construct the block template.
     let template = BlockTemplate::new(

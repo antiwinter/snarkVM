@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -21,30 +21,28 @@ use crate::{
     traits::{algorithms::CommitmentGadget, alloc::AllocGadget, FieldGadget},
 };
 use snarkvm_algorithms::{
-    commitment::{BHPCommitment, PedersenCommitment, PedersenCompressedCommitment},
+    commitment::{BHPCommitment, PedersenCommitment},
     CommitmentScheme,
 };
-use snarkvm_curves::edwards_bls12::{EdwardsProjective, Fq};
+use snarkvm_curves::edwards_bls12::{EdwardsAffine, EdwardsProjective, Fq};
 use snarkvm_r1cs::{ConstraintSystem, TestConstraintSystem};
-use snarkvm_utilities::rand::UniformRand;
+use snarkvm_utilities::rand::{test_rng, Uniform};
 
-use rand::{thread_rng, Rng};
+use rand::Rng;
+use rand_xorshift::XorShiftRng;
 
 const ITERATIONS: usize = 1000;
 
-fn native_and_gadget_equivalence_test<Native: CommitmentScheme, Gadget: CommitmentGadget<Native, Fq>>() -> (
-    <Native as CommitmentScheme>::Output,
-    <Gadget as CommitmentGadget<Native, Fq>>::OutputGadget,
-) {
-    let rng = &mut thread_rng();
-
+fn native_and_gadget_equivalence_test<Native: CommitmentScheme, Gadget: CommitmentGadget<Native, Fq>>(
+    rng: &mut XorShiftRng,
+) -> (<Native as CommitmentScheme>::Output, <Gadget as CommitmentGadget<Native, Fq>>::OutputGadget) {
     // Generate the input message and randomness.
     let input: [u8; 32] = rng.gen();
     let randomness = <Native as CommitmentScheme>::Randomness::rand(rng);
 
     // Compute the native commitment.
     let commitment_scheme = Native::setup("commitment_test");
-    let native_output = commitment_scheme.commit(&input, &randomness).unwrap();
+    let native_output = commitment_scheme.commit_bytes(&input, &randomness).unwrap();
 
     // Compute the gadget commitment.
     let mut cs = TestConstraintSystem::<Fq>::new();
@@ -71,11 +69,13 @@ fn native_and_gadget_equivalence_test<Native: CommitmentScheme, Gadget: Commitme
 #[test]
 fn bhp_commitment_gadget_test() {
     type TestCommitment = BHPCommitment<EdwardsProjective, 32, 48>;
-    type TestCommitmentGadget = BHPCommitmentGadget<EdwardsProjective, Fq, EdwardsBls12Gadget, 32, 48>;
+    type TestCommitmentGadget = BHPCommitmentGadget<EdwardsAffine, Fq, EdwardsBls12Gadget, 32, 48>;
+
+    let mut rng = test_rng();
 
     for _ in 0..ITERATIONS {
         let (native_output, gadget_output) =
-            native_and_gadget_equivalence_test::<TestCommitment, TestCommitmentGadget>();
+            native_and_gadget_equivalence_test::<TestCommitment, TestCommitmentGadget>(&mut rng);
         assert_eq!(native_output, gadget_output.get_value().unwrap());
     }
 }
@@ -83,24 +83,14 @@ fn bhp_commitment_gadget_test() {
 #[test]
 fn pedersen_commitment_gadget_test() {
     type TestCommitment = PedersenCommitment<EdwardsProjective, 8, 32>;
-    type TestCommitmentGadget = PedersenCommitmentGadget<EdwardsProjective, Fq, EdwardsBls12Gadget, 8, 32>;
+    type TestCommitmentGadget = PedersenCommitmentGadget<EdwardsAffine, Fq, EdwardsBls12Gadget, 8, 32>;
+
+    let mut rng = test_rng();
 
     for _ in 0..ITERATIONS {
         let (native_output, gadget_output) =
-            native_and_gadget_equivalence_test::<TestCommitment, TestCommitmentGadget>();
+            native_and_gadget_equivalence_test::<TestCommitment, TestCommitmentGadget>(&mut rng);
         assert_eq!(native_output.x, gadget_output.x.get_value().unwrap());
         assert_eq!(native_output.y, gadget_output.y.get_value().unwrap());
-    }
-}
-
-#[test]
-fn pedersen_compressed_commitment_gadget_test() {
-    type TestCommitment = PedersenCompressedCommitment<EdwardsProjective, 8, 32>;
-    type TestCommitmentGadget = PedersenCompressedCommitmentGadget<EdwardsProjective, Fq, EdwardsBls12Gadget, 8, 32>;
-
-    for _ in 0..ITERATIONS {
-        let (native_output, gadget_output) =
-            native_and_gadget_equivalence_test::<TestCommitment, TestCommitmentGadget>();
-        assert_eq!(native_output, gadget_output.get_value().unwrap());
     }
 }

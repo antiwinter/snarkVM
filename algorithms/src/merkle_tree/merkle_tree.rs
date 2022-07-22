@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -69,13 +69,9 @@ impl<P: MerkleParameters + Send + Sync> MerkleTree<P> {
         // Compute and store the hash values for each leaf.
         let last_level_index = level_indices.pop().unwrap_or(0);
 
-        let subsections = Self::hash_row(&*parameters, leaves)?;
-
-        let mut subsection_index = 0;
-        for subsection in subsections.into_iter() {
-            tree[last_level_index + subsection_index..last_level_index + subsection_index + subsection.len()]
-                .copy_from_slice(&subsection[..]);
-            subsection_index += subsection.len();
+        let subsection = Self::hash_leaf_row(&*parameters, leaves)?;
+        if !subsection.is_empty() {
+            tree[last_level_index..last_level_index + subsection.len()].copy_from_slice(&subsection[..]);
         }
 
         // Compute the hash values for every node in the tree.
@@ -83,17 +79,12 @@ impl<P: MerkleParameters + Send + Sync> MerkleTree<P> {
         level_indices.reverse();
         for &start_index in &level_indices {
             // Iterate over the current level.
-            let hashings = (start_index..upper_bound)
-                .map(|i| (&tree[left_child(i)], &tree[right_child(i)]))
-                .collect::<Vec<_>>();
+            let hashings =
+                (start_index..upper_bound).map(|i| (&tree[left_child(i)], &tree[right_child(i)])).collect::<Vec<_>>();
 
-            let hashes = Self::hash_row(&*parameters, &hashings[..])?;
-
-            let mut subsection_index = 0;
-            for subsection in hashes.into_iter() {
-                tree[start_index + subsection_index..start_index + subsection_index + subsection.len()]
-                    .copy_from_slice(&subsection[..]);
-                subsection_index += subsection.len();
+            let subsection = Self::hash_two_to_one_row(&*parameters, &hashings[..])?;
+            if !subsection.is_empty() {
+                tree[start_index..start_index + subsection.len()].copy_from_slice(&subsection[..]);
             }
 
             upper_bound = start_index;
@@ -117,13 +108,7 @@ impl<P: MerkleParameters + Send + Sync> MerkleTree<P> {
 
         end_timer!(new_time);
 
-        Ok(MerkleTree {
-            tree,
-            padding_tree,
-            hashed_leaves_index: last_level_index,
-            parameters,
-            root: root_hash,
-        })
+        Ok(MerkleTree { tree, padding_tree, hashed_leaves_index: last_level_index, parameters, root: root_hash })
     }
 
     pub fn rebuild<L: ToBytes + Send + Sync>(&self, start_index: usize, new_leaves: &[L]) -> Result<Self, MerkleError> {
@@ -159,10 +144,9 @@ impl<P: MerkleParameters + Send + Sync> MerkleTree<P> {
         tree[last_level_index..][..start_index].clone_from_slice(&self.hashed_leaves()[..start_index]);
 
         // The new leaves require hashing.
-        let subsections = Self::hash_row(&*self.parameters, new_leaves)?;
-
-        for (i, subsection) in subsections.into_iter().enumerate() {
-            tree[last_level_index + start_index + i..last_level_index + start_index + i + subsection.len()]
+        let subsection = Self::hash_leaf_row(&*self.parameters, new_leaves)?;
+        if !subsection.is_empty() {
+            tree[last_level_index + start_index..last_level_index + start_index + subsection.len()]
                 .copy_from_slice(&subsection[..]);
         }
 
@@ -172,9 +156,8 @@ impl<P: MerkleParameters + Send + Sync> MerkleTree<P> {
             let (parents, children) = tree.split_at_mut(upper_bound);
 
             // Iterate over the current level.
-            crate::cfg_iter_mut!(parents[start_index..upper_bound])
-                .zip(start_index..upper_bound)
-                .try_for_each(|(parent, current_index)| {
+            crate::cfg_iter_mut!(parents[start_index..upper_bound]).zip(start_index..upper_bound).try_for_each(
+                |(parent, current_index)| {
                     let left_index = left_child(current_index);
                     let right_index = right_child(current_index);
 
@@ -194,7 +177,8 @@ impl<P: MerkleParameters + Send + Sync> MerkleTree<P> {
                     }
 
                     Ok::<(), MerkleError>(())
-                })?;
+                },
+            )?;
             upper_bound = start_index;
         }
 
@@ -205,9 +189,7 @@ impl<P: MerkleParameters + Send + Sync> MerkleTree<P> {
 
         // The whole padding tree can be reused if the current hash matches the previous one.
         let new_padding_tree = if current_hash == self.tree[0] {
-            current_hash = self
-                .parameters
-                .hash_inner_node(&self.padding_tree.last().unwrap().0, &empty_hash)?;
+            current_hash = self.parameters.hash_inner_node(&self.padding_tree.last().unwrap().0, &empty_hash)?;
 
             None
         } else {
@@ -244,17 +226,17 @@ impl<P: MerkleParameters + Send + Sync> MerkleTree<P> {
     }
 
     #[inline]
-    pub fn root(&self) -> &<P::H as CRH>::Output {
+    pub fn root(&self) -> &<P::LeafCRH as CRH>::Output {
         &self.root
     }
 
     #[inline]
-    pub fn tree(&self) -> &[<P::H as CRH>::Output] {
+    pub fn tree(&self) -> &[<P::LeafCRH as CRH>::Output] {
         &self.tree
     }
 
     #[inline]
-    pub fn hashed_leaves(&self) -> &[<P::H as CRH>::Output] {
+    pub fn hashed_leaves(&self) -> &[<P::LeafCRH as CRH>::Output] {
         &self.tree[self.hashed_leaves_index..]
     }
 
@@ -265,7 +247,7 @@ impl<P: MerkleParameters + Send + Sync> MerkleTree<P> {
         let leaf_hash = self.parameters.hash_leaf(leaf)?;
 
         let tree_depth = tree_depth(self.tree.len());
-        let tree_index = convert_index_to_last_level(index, tree_depth);
+        let tree_index = convert_index_to_last_level(index, tree_depth)?;
 
         // Check that the given index corresponds to the correct leaf.
         if tree_index >= self.tree.len() || leaf_hash != self.tree[tree_index] {
@@ -298,25 +280,27 @@ impl<P: MerkleParameters + Send + Sync> MerkleTree<P> {
         if path.len() != Self::DEPTH {
             Err(MerkleError::IncorrectPathLength(path.len()))
         } else {
-            Ok(MerklePath {
-                parameters: self.parameters.clone(),
-                path,
-                leaf_index: index as u64,
-            })
+            Ok(MerklePath { parameters: self.parameters.clone(), path, leaf_index: index as u64 })
         }
     }
 
-    fn hash_row<L: ToBytes + Send + Sync>(
+    fn hash_leaf_row<L: ToBytes + Send + Sync>(
         parameters: &P,
         leaves: &[L],
-    ) -> Result<Vec<Vec<<<P as MerkleParameters>::H as CRH>::Output>>, MerkleError> {
+    ) -> Result<Vec<<<P as MerkleParameters>::LeafCRH as CRH>::Output>, MerkleError> {
         match leaves.len() {
             0 => Ok(vec![]),
-            _ => Ok(vec![
-                crate::cfg_iter!(leaves)
-                    .map(|leaf| parameters.hash_leaf(&leaf).unwrap())
-                    .collect::<Vec<_>>(),
-            ]),
+            _ => crate::cfg_iter!(leaves).map(|leaf| parameters.hash_leaf(&leaf)).collect(),
+        }
+    }
+
+    fn hash_two_to_one_row<L: ToBytes + Send + Sync>(
+        parameters: &P,
+        inner: &[L],
+    ) -> Result<Vec<<<P as MerkleParameters>::TwoToOneCRH as CRH>::Output>, MerkleError> {
+        match inner.len() {
+            0 => Ok(vec![]),
+            _ => crate::cfg_iter!(inner).map(|inner_nodes| parameters.hash_two_to_one(&inner_nodes)).collect(),
         }
     }
 }
@@ -375,8 +359,9 @@ fn parent(index: usize) -> Option<usize> {
 }
 
 #[inline]
-fn convert_index_to_last_level(index: usize, tree_depth: usize) -> usize {
-    index + (1 << tree_depth) - 1
+fn convert_index_to_last_level(index: usize, tree_depth: usize) -> Result<usize, MerkleError> {
+    let shifted = 1u32.checked_shl(tree_depth as u32).ok_or(MerkleError::IncorrectLeafIndex(index))?;
+    Ok(index.saturating_add(shifted as usize).saturating_sub(1))
 }
 
 pub struct Ancestors(usize);

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -19,8 +19,7 @@ use crate::{Address, Network, PrivateKey, ViewKey};
 use rand::{CryptoRng, Rng};
 use std::fmt;
 
-#[derive(Derivative)]
-#[derivative(Clone(bound = "N: Network"))]
+#[derive(Clone)]
 pub struct Account<N: Network> {
     private_key: PrivateKey<N>,
     view_key: ViewKey<N>,
@@ -55,11 +54,7 @@ impl<N: Network> From<PrivateKey<N>> for Account<N> {
         let view_key = ViewKey::from(&private_key);
         let address = Address::from(&private_key);
 
-        Self {
-            private_key,
-            view_key,
-            address,
-        }
+        Self { private_key, view_key, address }
     }
 }
 

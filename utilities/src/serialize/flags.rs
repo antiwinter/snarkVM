@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -17,34 +17,26 @@
 use crate::serialize::Flags;
 
 /// Flags to be encoded into the serialization.
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub struct EmptyFlags;
 
 impl Flags for EmptyFlags {
+    const BIT_SIZE: usize = 0;
+
     #[inline]
     fn u8_bitmask(&self) -> u8 {
         0
     }
 
     #[inline]
-    fn from_u8(_value: u8) -> Self {
-        EmptyFlags
-    }
-
-    #[inline]
-    fn from_u8_remove_flags(_value: &mut u8) -> Self {
-        EmptyFlags
-    }
-
-    #[inline]
-    fn num_bits() -> usize {
-        0
+    fn from_u8(value: u8) -> Option<Self> {
+        if (value >> 7) == 0 { Some(EmptyFlags) } else { None }
     }
 }
 
 /// Flags to be encoded into the serialization.
 /// The default flags (empty) should not change the binary representation.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SWFlags {
     Infinity,
     PositiveY,
@@ -59,11 +51,7 @@ impl SWFlags {
 
     #[inline]
     pub fn from_y_sign(is_positive: bool) -> Self {
-        if is_positive {
-            SWFlags::PositiveY
-        } else {
-            SWFlags::NegativeY
-        }
+        if is_positive { SWFlags::PositiveY } else { SWFlags::NegativeY }
     }
 
     #[inline]
@@ -90,6 +78,8 @@ impl Default for SWFlags {
 }
 
 impl Flags for SWFlags {
+    const BIT_SIZE: usize = 2;
+
     #[inline]
     fn u8_bitmask(&self) -> u8 {
         let mut mask = 0;
@@ -102,33 +92,23 @@ impl Flags for SWFlags {
     }
 
     #[inline]
-    fn from_u8(value: u8) -> Self {
+    fn from_u8(value: u8) -> Option<Self> {
         let x_sign = (value >> 7) & 1 == 1;
         let is_infinity = (value >> 6) & 1 == 1;
         match (x_sign, is_infinity) {
-            (_, true) => SWFlags::Infinity,
-            (true, false) => SWFlags::PositiveY,
-            (false, false) => SWFlags::NegativeY,
+            // This is invalid because we only want *one* way to serialize
+            // the point at infinity.
+            (true, true) => None,
+            (false, true) => Some(SWFlags::Infinity),
+            (true, false) => Some(SWFlags::PositiveY),
+            (false, false) => Some(SWFlags::NegativeY),
         }
-    }
-
-    #[inline]
-    fn from_u8_remove_flags(value: &mut u8) -> Self {
-        let flags = Self::from_u8(*value);
-        *value &= 0x3F;
-        flags
-    }
-
-    /// Number of bits required for these flags.
-    #[inline]
-    fn num_bits() -> usize {
-        2
     }
 }
 
 /// Flags to be encoded into the serialization.
 /// The default flags (empty) should not change the binary representation.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum EdwardsFlags {
     PositiveY,
     NegativeY,
@@ -137,11 +117,7 @@ pub enum EdwardsFlags {
 impl EdwardsFlags {
     #[inline]
     pub fn from_y_sign(is_positive: bool) -> Self {
-        if is_positive {
-            EdwardsFlags::PositiveY
-        } else {
-            EdwardsFlags::NegativeY
-        }
+        if is_positive { EdwardsFlags::PositiveY } else { EdwardsFlags::NegativeY }
     }
 
     #[inline]
@@ -162,36 +138,20 @@ impl Default for EdwardsFlags {
 }
 
 impl Flags for EdwardsFlags {
+    const BIT_SIZE: usize = 1;
+
     #[inline]
     fn u8_bitmask(&self) -> u8 {
         let mut mask = 0;
-        match self {
-            EdwardsFlags::PositiveY => mask |= 1 << 7,
-            EdwardsFlags::NegativeY => (),
+        if let Self::PositiveY = self {
+            mask |= 1 << 7;
         }
         mask
     }
 
     #[inline]
-    fn from_u8(value: u8) -> Self {
+    fn from_u8(value: u8) -> Option<Self> {
         let x_sign = (value >> 7) & 1 == 1;
-        if x_sign {
-            EdwardsFlags::PositiveY
-        } else {
-            EdwardsFlags::NegativeY
-        }
-    }
-
-    #[inline]
-    fn from_u8_remove_flags(value: &mut u8) -> Self {
-        let flags = Self::from_u8(*value);
-        *value &= 0x7F;
-        flags
-    }
-
-    /// Number of bits required for these flags.
-    #[inline]
-    fn num_bits() -> usize {
-        1
+        if x_sign { Some(Self::PositiveY) } else { Some(Self::NegativeY) }
     }
 }

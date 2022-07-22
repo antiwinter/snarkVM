@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,19 +14,23 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::CommitmentError;
-use snarkvm_utilities::{FromBytes, ToBytes, UniformRand};
+use snarkvm_utilities::{FromBytes, ToBits, ToBytes, Uniform};
 
-use std::{fmt::Debug, hash::Hash};
+use anyhow::Result;
+use core::{fmt::Debug, hash::Hash};
 
-pub trait CommitmentScheme: ToBytes + FromBytes + Sized + Clone + From<<Self as CommitmentScheme>::Parameters> {
+pub trait CommitmentScheme: Sized + Clone {
     type Output: Clone + Debug + Default + Eq + Hash + ToBytes + FromBytes + Sync + Send;
     type Parameters: Clone + Debug + Eq;
-    type Randomness: Clone + Debug + Default + Eq + UniformRand + ToBytes + FromBytes + Sync + Send;
+    type Randomness: Clone + Debug + Default + Eq + Uniform + ToBytes + FromBytes + Sync + Send;
 
     fn setup(message: &str) -> Self;
 
-    fn commit(&self, input: &[u8], randomness: &Self::Randomness) -> Result<Self::Output, CommitmentError>;
+    fn commit(&self, input: &[bool], randomness: &Self::Randomness) -> Result<Self::Output>;
+
+    fn commit_bytes(&self, input: &[u8], randomness: &Self::Randomness) -> Result<Self::Output> {
+        self.commit(&input.to_bits_le(), randomness)
+    }
 
     fn parameters(&self) -> Self::Parameters;
 }

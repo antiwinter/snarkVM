@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -35,9 +35,9 @@ use crate::{
     },
     templates::{short_weierstrass_jacobian::tests::sw_tests, twisted_edwards_extended::tests::edwards_test},
     traits::{
-        tests_curve::curve_tests,
         tests_field::{field_serialization_test, field_test, frobenius_test, primefield_test, sqrt_field_test},
-        tests_group::group_test,
+        tests_group::*,
+        tests_projective::curve_tests,
         AffineCurve,
         PairingEngine,
         ProjectiveCurve,
@@ -59,10 +59,10 @@ use snarkvm_fields::{
 };
 use snarkvm_utilities::{
     biginteger::{BigInteger, BigInteger384},
-    rand::UniformRand,
+    rand::{test_rng, Uniform},
 };
 
-use rand::SeedableRng;
+use rand::{thread_rng, Rng, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use std::{
     cmp::Ordering,
@@ -154,6 +154,11 @@ fn test_fq_repr_is_zero() {
 }
 
 #[test]
+fn test_fq_is_half() {
+    assert_eq!(Fq::half(), Fq::one().double().inverse().unwrap());
+}
+
+#[test]
 fn test_fq_repr_num_bits() {
     let mut a = BigInteger384::from(0);
     assert_eq!(0, a.num_bits());
@@ -169,7 +174,7 @@ fn test_fq_repr_num_bits() {
 fn test_fq_add_assign() {
     // Test associativity
 
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         // Generate a, b, c and ensure (a + b) + c == a + (b + c).
@@ -193,7 +198,7 @@ fn test_fq_add_assign() {
 
 #[test]
 fn test_fq_sub_assign() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         // Ensure that (a - b) + (b - a) = 0.
@@ -213,7 +218,7 @@ fn test_fq_sub_assign() {
 
 #[test]
 fn test_fq_mul_assign() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000000 {
         // Ensure that (a * b) * c = a * (b * c)
@@ -258,7 +263,7 @@ fn test_fq_mul_assign() {
 
 #[test]
 fn test_fq_squaring() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000000 {
         // Ensure that (a * a) = a^2
@@ -278,7 +283,7 @@ fn test_fq_squaring() {
 fn test_fq_inverse() {
     assert!(Fq::zero().inverse().is_none());
 
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     let one = Fq::one();
 
@@ -293,7 +298,7 @@ fn test_fq_inverse() {
 
 #[test]
 fn test_fq_double_in_place() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         // Ensure doubling a is equivalent to adding a to itself.
@@ -313,7 +318,7 @@ fn test_fq_negate() {
         assert!(a.is_zero());
     }
 
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         // Ensure (a - (-a)) = 0.
@@ -327,7 +332,7 @@ fn test_fq_negate() {
 
 #[test]
 fn test_fq_pow() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for i in 0..1000 {
         // Exponentiate by various small numbers and ensure it consists with repeated
@@ -351,7 +356,7 @@ fn test_fq_pow() {
 
 #[test]
 fn test_fq_sqrt() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     assert_eq!(Fq::zero().sqrt().unwrap(), Fq::zero());
 
@@ -399,10 +404,7 @@ fn test_fq_root_of_unity() {
         ]),
         Fq::two_adic_root_of_unity()
     );
-    assert_eq!(
-        Fq::two_adic_root_of_unity().pow([1 << FqParameters::TWO_ADICITY]),
-        Fq::one()
-    );
+    assert_eq!(Fq::two_adic_root_of_unity().pow([1 << FqParameters::TWO_ADICITY]), Fq::one());
     assert!(Fq::multiplicative_generator().sqrt().is_none());
 }
 
@@ -419,14 +421,8 @@ fn test_fq_ordering() {
 fn test_fq_legendre() {
     assert_eq!(QuadraticResidue, Fq::one().legendre());
     assert_eq!(Zero, Fq::zero().legendre());
-    assert_eq!(
-        QuadraticResidue,
-        Fq::from_repr(BigInteger384::from(4)).unwrap().legendre()
-    );
-    assert_eq!(
-        QuadraticNonResidue,
-        Fq::from_repr(BigInteger384::from(5)).unwrap().legendre()
-    );
+    assert_eq!(QuadraticResidue, Fq::from_repr(BigInteger384::from(4)).unwrap().legendre());
+    assert_eq!(QuadraticNonResidue, Fq::from_repr(BigInteger384::from(5)).unwrap().legendre());
 }
 
 #[test]
@@ -470,14 +466,11 @@ fn test_fq2_legendre() {
 
 #[test]
 fn test_fq2_mul_nonresidue() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     let nqr = Fq2::new(Fq::zero(), Fq::one());
 
-    let quadratic_non_residue = Fq2::new(
-        Fq2Parameters::QUADRATIC_NONRESIDUE.0,
-        Fq2Parameters::QUADRATIC_NONRESIDUE.1,
-    );
+    let quadratic_non_residue = Fq2::new(Fq2Parameters::QUADRATIC_NONRESIDUE.0, Fq2Parameters::QUADRATIC_NONRESIDUE.1);
     for _ in 0..1000 {
         let mut a = Fq2::rand(&mut rng);
         let mut b = a;
@@ -490,7 +483,7 @@ fn test_fq2_mul_nonresidue() {
 
 #[test]
 fn test_fq6_mul_by_1() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         let c1 = Fq2::rand(&mut rng);
@@ -506,7 +499,7 @@ fn test_fq6_mul_by_1() {
 
 #[test]
 fn test_fq6_mul_by_01() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         let c0 = Fq2::rand(&mut rng);
@@ -523,7 +516,7 @@ fn test_fq6_mul_by_01() {
 
 #[test]
 fn test_fq12_mul_by_014() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         let c0 = Fq2::rand(&mut rng);
@@ -533,10 +526,7 @@ fn test_fq12_mul_by_014() {
         let mut b = a;
 
         a.mul_by_014(&c0, &c1, &c5);
-        b.mul_assign(&Fq12::new(
-            Fq6::new(c0, c1, Fq2::zero()),
-            Fq6::new(Fq2::zero(), c5, Fq2::zero()),
-        ));
+        b.mul_assign(&Fq12::new(Fq6::new(c0, c1, Fq2::zero()), Fq6::new(Fq2::zero(), c5, Fq2::zero())));
 
         assert_eq!(a, b);
     }
@@ -544,7 +534,7 @@ fn test_fq12_mul_by_014() {
 
 #[test]
 fn test_fq12_mul_by_034() {
-    let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+    let mut rng = test_rng();
 
     for _ in 0..1000 {
         let c0 = Fq2::rand(&mut rng);
@@ -554,10 +544,7 @@ fn test_fq12_mul_by_034() {
         let mut b = a;
 
         a.mul_by_034(&c0, &c3, &c4);
-        b.mul_assign(&Fq12::new(
-            Fq6::new(c0, Fq2::zero(), Fq2::zero()),
-            Fq6::new(c3, c4, Fq2::zero()),
-        ));
+        b.mul_assign(&Fq12::new(Fq6::new(c0, Fq2::zero(), Fq2::zero()), Fq6::new(c3, c4, Fq2::zero())));
 
         assert_eq!(a, b);
     }
@@ -573,7 +560,7 @@ fn test_g1_projective_curve() {
 fn test_g1_projective_group() {
     let a: G1Projective = rand::random();
     let b: G1Projective = rand::random();
-    group_test(a, b);
+    projective_test(a, b);
 }
 
 #[test]
@@ -593,7 +580,7 @@ fn test_g2_projective_curve() {
 fn test_g2_projective_group() {
     let a: G2Projective = rand::random();
     let b: G2Projective = rand::random();
-    group_test(a, b);
+    projective_test(a, b);
 }
 
 #[test]

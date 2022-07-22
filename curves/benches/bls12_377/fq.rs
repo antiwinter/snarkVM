@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -18,7 +18,7 @@ use snarkvm_curves::bls12_377::Fq;
 use snarkvm_fields::{Field, PrimeField, SquareRootField};
 use snarkvm_utilities::{
     biginteger::{BigInteger, BigInteger384 as FqRepr},
-    rand::UniformRand,
+    rand::Uniform,
 };
 
 use criterion::Criterion;

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -17,23 +17,29 @@
 use crate::{
     impl_sw_curve_serializer,
     templates::short_weierstrass_jacobian::Projective,
-    traits::{AffineCurve, Group, ProjectiveCurve, ShortWeierstrassParameters as Parameters},
+    traits::{AffineCurve, ProjectiveCurve, ShortWeierstrassParameters as Parameters},
 };
-use snarkvm_fields::{impl_add_sub_from_field_ref, Field, One, PrimeField, SquareRootField, Zero};
+use snarkvm_fields::{Field, One, PrimeField, SquareRootField, Zero};
 use snarkvm_utilities::{
-    bititerator::BitIteratorBE, rand::UniformRand, serialize::*, FromBytes, ToBits, ToBytes, ToMinimalBits,
+    bititerator::BitIteratorBE,
+    io::{Error, ErrorKind, Read, Result as IoResult, Write},
+    rand::Uniform,
+    serialize::*,
+    FromBytes,
+    ToBits,
+    ToBytes,
+    ToMinimalBits,
 };
 
+use core::{
+    fmt::{Display, Formatter, Result as FmtResult},
+    ops::{Mul, Neg},
+};
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    fmt::{Display, Formatter, Result as FmtResult},
-    io::{Error, ErrorKind, Read, Result as IoResult, Write},
-    ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
-};
 
 #[derive(Derivative, Serialize, Deserialize)]
 #[derivative(
@@ -51,12 +57,9 @@ pub struct Affine<P: Parameters> {
 }
 
 impl<P: Parameters> Affine<P> {
-    pub fn new(x: P::BaseField, y: P::BaseField, infinity: bool) -> Self {
+    #[inline]
+    pub const fn new(x: P::BaseField, y: P::BaseField, infinity: bool) -> Self {
         Self { x, y, infinity }
-    }
-
-    pub fn scale_by_cofactor(&self) -> Projective<P> {
-        self.mul_bits(BitIteratorBE::new(P::COFACTOR))
     }
 }
 
@@ -72,19 +75,41 @@ impl<P: Parameters> Zero for Affine<P> {
     }
 }
 
+impl<P: Parameters> Default for Affine<P> {
+    #[inline]
+    fn default() -> Self {
+        Self::zero()
+    }
+}
+
 impl<P: Parameters> Display for Affine<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        if self.infinity {
-            write!(f, "Affine(Infinity)")
-        } else {
-            write!(f, "Affine(x={}, y={})", self.x, self.y)
-        }
+        if self.infinity { write!(f, "Affine(Infinity)") } else { write!(f, "Affine(x={}, y={})", self.x, self.y) }
+    }
+}
+
+impl<P: Parameters> PartialEq<Projective<P>> for Affine<P> {
+    fn eq(&self, other: &Projective<P>) -> bool {
+        other.eq(self)
     }
 }
 
 impl<P: Parameters> AffineCurve for Affine<P> {
     type BaseField = P::BaseField;
+    type Coordinates = (Self::BaseField, Self::BaseField, bool);
     type Projective = Projective<P>;
+    type ScalarField = P::ScalarField;
+
+    /// Initializes a new affine group element from the given coordinates.
+    fn from_coordinates(coordinates: Self::Coordinates) -> Self {
+        let (x, y, infinity) = coordinates;
+        Self { x, y, infinity }
+    }
+
+    #[inline]
+    fn cofactor() -> &'static [u64] {
+        P::COFACTOR
+    }
 
     #[inline]
     fn prime_subgroup_generator() -> Self {
@@ -113,14 +138,6 @@ impl<P: Parameters> AffineCurve for Affine<P> {
     /// largest y-coordinate be selected.
     fn from_x_coordinate(x: Self::BaseField, greatest: bool) -> Option<Self> {
         // Compute x^3 + ax + b
-
-        let x2 =  x.square();
-        let x3 = x2 * x;
-        let xa = P::mul_by_a(&x);
-        let plus = x3 + xa;
-        let y2 = P::add_b(&plus);
-        let yy = y2.sqrt();
-
         let x3b = P::add_b(&((x.square() * x) + P::mul_by_a(&x)));
 
         x3b.sqrt().map(|y| {
@@ -129,7 +146,7 @@ impl<P: Parameters> AffineCurve for Affine<P> {
             let y = if (y < negy) ^ greatest { y } else { negy };
             Self::new(x, y, false)
         })
-    }  
+    }
 
     /// Attempts to construct an affine point given a y-coordinate. The
     /// point is not guaranteed to be in the prime order subgroup.
@@ -152,21 +169,20 @@ impl<P: Parameters> AffineCurve for Affine<P> {
     }
 
     fn mul_by_cofactor_to_projective(&self) -> Self::Projective {
-        self.scale_by_cofactor()
+        self.mul_bits(BitIteratorBE::new(P::COFACTOR))
     }
 
     fn mul_by_cofactor_inv(&self) -> Self {
-        self.mul(P::COFACTOR_INV)
+        (*self * P::COFACTOR_INV).into()
     }
 
     #[inline]
-    fn into_projective(&self) -> Projective<P> {
+    fn to_projective(&self) -> Projective<P> {
         (*self).into()
     }
 
     fn is_in_correct_subgroup_assuming_on_curve(&self) -> bool {
-        self.mul_bits(BitIteratorBE::new(P::ScalarField::characteristic()))
-            .is_zero()
+        P::is_in_correct_subgroup_assuming_on_curve(self)
     }
 
     fn to_x_coordinate(&self) -> Self::BaseField {
@@ -188,6 +204,60 @@ impl<P: Parameters> AffineCurve for Affine<P> {
             y2 == x3b
         }
     }
+
+    /// Performs the first half of batch addition in-place:
+    ///     `lambda` := `(y2 - y1) / (x2 - x1)`,
+    /// for two given affine points.
+    fn batch_add_loop_1(a: &mut Self, b: &mut Self, half: &Self::BaseField, inversion_tmp: &mut Self::BaseField) {
+        if a.is_zero() || b.is_zero() {
+        } else if a.x == b.x {
+            // Double
+            // In our model, we consider self additions rare.
+            // So we consider it inconsequential to make them more expensive
+            // This costs 1 modular mul more than a standard squaring,
+            // and one amortised inversion
+            if a.y == b.y {
+                // Compute one half (1/2) and cache it.
+
+                let x_sq = b.x.square();
+                b.x -= &b.y; // x - y
+                a.x = b.y.double(); // denominator = 2y
+                a.y = x_sq.double() + x_sq + P::COEFF_A; // numerator = 3x^2 + a
+                b.y -= &(a.y * half); // y - (3x^2 + a)/2
+                a.y *= *inversion_tmp; // (3x^2 + a) * tmp
+                *inversion_tmp *= &a.x; // update tmp
+            } else {
+                // No inversions take place if either operand is zero
+                a.infinity = true;
+                b.infinity = true;
+            }
+        } else {
+            // We can recover x1 + x2 from this. Note this is never 0.
+            a.x -= &b.x; // denominator = x1 - x2
+            a.y -= &b.y; // numerator = y1 - y2
+            a.y *= *inversion_tmp; // (y1 - y2)*tmp
+            *inversion_tmp *= &a.x // update tmp
+        }
+    }
+
+    /// Performs the second half of batch addition in-place:
+    ///     `x3` := `lambda^2 - x1 - x2`
+    ///     `y3` := `lambda * (x1 - x3) - y1`.
+    fn batch_add_loop_2(a: &mut Self, b: Self, inversion_tmp: &mut Self::BaseField) {
+        if a.is_zero() {
+            *a = b;
+        } else if !b.is_zero() {
+            let lambda = a.y * *inversion_tmp;
+            *inversion_tmp *= &a.x; // Remove the top layer of the denominator
+
+            // x3 = l^2 - x1 - x2 or for squaring: 2y + l^2 + 2x - 2y = l^2 - 2x
+            a.x += &b.x.double();
+            a.x = lambda.square() - a.x;
+            // y3 = l*(x2 - x3) - y2 or
+            // for squaring: (3x^2 + a)/2y(x - y - x3) - (y - (3x^2 + a)/2) = l*(x - x3) - y
+            a.y = lambda * (b.x - a.x) - b.y;
+        }
+    }
 }
 
 impl<P: Parameters> ToMinimalBits for Affine<P> {
@@ -199,84 +269,20 @@ impl<P: Parameters> ToMinimalBits for Affine<P> {
     }
 }
 
-impl<P: Parameters> Group for Affine<P> {
-    type ScalarField = P::ScalarField;
-
-    #[inline]
-    #[must_use]
-    fn double(&self) -> Self {
-        let mut tmp = *self;
-        tmp += self;
-        tmp
-    }
-
-    #[inline]
-    fn double_in_place(&mut self) {
-        let tmp = *self;
-        *self = tmp.double();
-    }
-}
-
 impl<P: Parameters> Neg for Affine<P> {
     type Output = Self;
 
     #[inline]
     fn neg(self) -> Self {
-        if !self.is_zero() {
-            Self::new(self.x, -self.y, false)
-        } else {
-            self
-        }
-    }
-}
-
-impl_add_sub_from_field_ref!(Affine, Parameters);
-
-impl<'a, P: Parameters> Add<&'a Self> for Affine<P> {
-    type Output = Self;
-
-    fn add(self, other: &'a Self) -> Self {
-        let mut copy = self;
-        copy += other;
-        copy
-    }
-}
-
-impl<'a, P: Parameters> AddAssign<&'a Self> for Affine<P> {
-    fn add_assign(&mut self, other: &'a Self) {
-        let mut projective = Projective::from(*self);
-        projective.add_assign_mixed(other);
-        *self = projective.into();
-    }
-}
-
-impl<'a, P: Parameters> Sub<&'a Self> for Affine<P> {
-    type Output = Self;
-
-    fn sub(self, other: &'a Self) -> Self {
-        let mut copy = self;
-        copy -= other;
-        copy
-    }
-}
-
-impl<'a, P: Parameters> SubAssign<&'a Self> for Affine<P> {
-    fn sub_assign(&mut self, other: &'a Self) {
-        *self += &(-(*other));
+        if !self.is_zero() { Self::new(self.x, -self.y, false) } else { self }
     }
 }
 
 impl<P: Parameters> Mul<P::ScalarField> for Affine<P> {
-    type Output = Self;
+    type Output = Projective<P>;
 
-    fn mul(self, other: P::ScalarField) -> Self {
-        self.mul_bits(BitIteratorBE::new(other.to_repr())).into()
-    }
-}
-
-impl<P: Parameters> MulAssign<P::ScalarField> for Affine<P> {
-    fn mul_assign(&mut self, other: P::ScalarField) {
-        *self = self.mul(other)
+    fn mul(self, other: P::ScalarField) -> Self::Output {
+        self.mul_bits(BitIteratorBE::new(other.to_repr()))
     }
 }
 
@@ -303,13 +309,6 @@ impl<P: Parameters> FromBytes for Affine<P> {
     }
 }
 
-impl<P: Parameters> Default for Affine<P> {
-    #[inline]
-    fn default() -> Self {
-        Self::zero()
-    }
-}
-
 impl<P: Parameters> Distribution<Affine<P>> for Standard {
     #[inline]
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Affine<P> {
@@ -318,14 +317,13 @@ impl<P: Parameters> Distribution<Affine<P>> for Standard {
             let greatest = rng.gen();
 
             if let Some(p) = Affine::from_x_coordinate(x, greatest) {
-                return p.scale_by_cofactor().into();
+                return p.mul_by_cofactor();
             }
         }
     }
 }
 
-// The projective point X, Y, Z is represented in the affine
-// coordinates as X/Z^2, Y/Z^3.
+// The projective point X, Y, Z is represented in the affine coordinates as X/Z^2, Y/Z^3.
 impl<P: Parameters> From<Projective<P>> for Affine<P> {
     #[inline]
     fn from(p: Projective<P>) -> Affine<P> {

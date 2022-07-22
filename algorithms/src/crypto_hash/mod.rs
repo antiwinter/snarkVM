@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -17,11 +17,14 @@
 pub mod blake2xs;
 pub use blake2xs::*;
 
-pub mod grain_lfsr;
-pub use grain_lfsr::*;
+pub mod hash_to_curve;
+pub use hash_to_curve::*;
 
 pub mod poseidon;
 pub use poseidon::*;
+
+pub mod sha256;
+pub use sha256::*;
 
 #[cfg(test)]
 pub mod tests;

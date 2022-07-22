@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -29,17 +29,9 @@ use snarkvm_utilities::{
 };
 
 use bech32::{self, FromBase32, ToBase32};
+use core::hash::{Hash, Hasher};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Derivative)]
-#[derivative(
-    Default(bound = "N: Network"),
-    Copy(bound = "N: Network"),
-    Clone(bound = "N: Network"),
-    PartialEq(bound = "N: Network"),
-    Eq(bound = "N: Network"),
-    Hash(bound = "N: Network")
-)]
 pub struct Address<N: Network>(<N::AccountEncryptionScheme as EncryptionScheme>::PublicKey);
 
 impl<N: Network> Address<N> {
@@ -57,12 +49,12 @@ impl<N: Network> Address<N> {
     pub fn from_view_key(view_key: &ViewKey<N>) -> Self {
         // TODO (howardwu): This operation can be optimized by precomputing powers in ECIES native impl.
         //  Optimizing this will also speed up encryption.
-        Self(N::account_encryption_scheme().generate_public_key(&*view_key))
+        Self(N::account_encryption_scheme().generate_public_key(view_key))
     }
 
     /// Verifies a signature on a message signed by the account view key.
     /// Returns `true` if the signature is valid. Otherwise, returns `false`.
-    pub fn verify_signature(&self, message: &[u8], signature: &N::AccountSignature) -> Result<bool, AccountError> {
+    pub fn verify_signature(&self, message: &[bool], signature: &N::AccountSignature) -> Result<bool, AccountError> {
         Ok(N::account_signature_scheme().verify(&self.0, message, signature)?)
     }
 }
@@ -113,7 +105,7 @@ impl<N: Network> FromBytes for Address<N> {
     /// Reads in an account address buffer.
     #[inline]
     fn read_le<R: Read>(mut reader: R) -> IoResult<Self> {
-        let x_coordinate = N::ProgramBaseField::read_le(&mut reader)?;
+        let x_coordinate = N::InnerScalarField::read_le(&mut reader)?;
 
         if let Some(element) = N::ProgramAffineCurve::from_x_coordinate(x_coordinate, true) {
             if element.is_in_correct_subgroup_assuming_on_curve() {
@@ -173,13 +165,9 @@ impl<N: Network> fmt::Display for Address<N> {
         // Convert the encryption key to bytes.
         let encryption_key = self.to_bytes_le().expect("Failed to write encryption key as bytes");
 
-        bech32::encode(
-            account_format::ADDRESS_PREFIX,
-            encryption_key.to_base32(),
-            bech32::Variant::Bech32m,
-        )
-        .expect("Failed to encode in bech32m")
-        .fmt(f)
+        bech32::encode(account_format::ADDRESS_PREFIX, encryption_key.to_base32(), bech32::Variant::Bech32m)
+            .expect("Failed to encode in bech32m")
+            .fmt(f)
     }
 }
 
@@ -204,6 +192,35 @@ impl<'de, N: Network> Deserialize<'de> for Address<N> {
             true => FromStr::from_str(&String::deserialize(deserializer)?).map_err(de::Error::custom),
             false => FromBytesDeserializer::<Self>::deserialize(deserializer, "address", N::ADDRESS_SIZE_IN_BYTES),
         }
+    }
+}
+
+impl<N: Network> Copy for Address<N> {}
+
+impl<N: Network> Clone for Address<N> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<N: Network> PartialEq for Address<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<N: Network> Eq for Address<N> {}
+
+impl<N: Network> Hash for Address<N> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
+impl<N: Network> Default for Address<N> {
+    fn default() -> Self {
+        Self(Default::default())
     }
 }
 
@@ -232,13 +249,7 @@ mod tests {
         // Serialize
         let expected_string = &expected_address.to_string();
         let candidate_string = serde_json::to_string(&expected_address).unwrap();
-        assert_eq!(
-            expected_string,
-            serde_json::Value::from_str(&candidate_string)
-                .unwrap()
-                .as_str()
-                .unwrap()
-        );
+        assert_eq!(expected_string, serde_json::Value::from_str(&candidate_string).unwrap().as_str().unwrap());
 
         // Deserialize
         assert_eq!(expected_address, Address::from_str(expected_string).unwrap());

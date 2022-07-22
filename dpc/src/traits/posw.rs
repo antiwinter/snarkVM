@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -26,7 +26,6 @@ pub trait PoSWScheme<N: Network>: Clone + Send + Sync {
     /// Sets up an instance of PoSW using an SRS.
     fn setup<R: Rng + CryptoRng>(
         srs: &mut SRS<R, <<N as Network>::PoSWSNARK as SNARK>::UniversalSetupParameters>,
-        gpu_index: i16,
     ) -> Result<Self, PoSWError>;
 
     /// Loads an instance of PoSW using stored parameters.
@@ -45,7 +44,6 @@ pub trait PoSWScheme<N: Network>: Clone + Send + Sync {
         block_template: &BlockTemplate<N>,
         terminator: &AtomicBool,
         rng: &mut R,
-        gpu_index: i16,
     ) -> Result<BlockHeader<N>, PoSWError>;
 
     ///
@@ -55,21 +53,13 @@ pub trait PoSWScheme<N: Network>: Clone + Send + Sync {
     fn prove_once_unchecked<R: Rng + CryptoRng>(
         &self,
         circuit: &mut PoSWCircuit<N>,
-        block_template: &BlockTemplate<N>,
         terminator: &AtomicBool,
         rng: &mut R,
-        gpu_index: i16,
     ) -> Result<PoSWProof<N>, PoSWError>;
 
     /// Verifies the Proof of Succinct Work against the nonce, root, and difficulty target.
     fn verify_from_block_header(&self, block_header: &BlockHeader<N>) -> bool;
 
     /// Verifies the Proof of Succinct Work against the nonce, root, and difficulty target.
-    fn verify(
-        &self,
-        block_height: u32,
-        difficulty_target: u64,
-        inputs: &[N::InnerScalarField],
-        proof: &PoSWProof<N>,
-    ) -> bool;
+    fn verify(&self, difficulty_target: u64, inputs: &[N::InnerScalarField], proof: &PoSWProof<N>) -> bool;
 }

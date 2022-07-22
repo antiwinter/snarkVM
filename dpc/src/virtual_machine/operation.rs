@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,9 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::{Address, AleoAmount, FunctionInputs, FunctionType, Network};
+use crate::{Address, AleoAmount, FunctionInputs, Network};
 use snarkvm_fields::{ConstraintFieldError, ToConstraintField};
-use snarkvm_utilities::{FromBytes, FromBytesDeserializer, ToBytes, ToBytesSerializer};
+use snarkvm_utilities::{error, FromBytes, FromBytesDeserializer, ToBytes, ToBytesSerializer};
 
 use anyhow::{anyhow, Result};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
@@ -29,22 +29,17 @@ use std::{
 type Caller<N> = Address<N>;
 type Recipient<N> = Address<N>;
 
-#[derive(Derivative)]
-#[derivative(
-    Clone(bound = "N: Network"),
-    Debug(bound = "N: Network"),
-    PartialEq(bound = "N: Network"),
-    Eq(bound = "N: Network")
-)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Operation<N: Network> {
     /// Noop.
     Noop,
     /// Generates the given amount to the recipient address.
     Coinbase(Recipient<N>, AleoAmount),
+    // TODO (raychu86): Refactor transfers to support multiple recipients.
     /// Transfers the given amount from the caller to the recipient address.
     Transfer(Caller<N>, Recipient<N>, AleoAmount),
     /// Invokes the given records on the function and inputs.
-    Evaluate(N::FunctionID, FunctionType, FunctionInputs<N>),
+    Evaluate(N::FunctionID, FunctionInputs<N>),
 }
 
 impl<N: Network> Operation<N> {
@@ -58,25 +53,16 @@ impl<N: Network> Operation<N> {
         }
     }
 
-    pub fn function_id(&self) -> N::FunctionID {
+    pub fn function_id(&self) -> Option<N::FunctionID> {
         match self {
-            Self::Noop | Self::Coinbase(..) | Self::Transfer(..) => *N::noop_function_id(),
-            Self::Evaluate(function_id, _, _) => *function_id,
-        }
-    }
-
-    pub fn function_type(&self) -> FunctionType {
-        match self {
-            Self::Noop => FunctionType::Noop,
-            Self::Coinbase(..) => FunctionType::Insert,
-            Self::Transfer(..) => FunctionType::Full,
-            Self::Evaluate(_, function_type, _) => *function_type,
+            Self::Noop | Self::Coinbase(..) | Self::Transfer(..) => None,
+            Self::Evaluate(function_id, _) => Some(*function_id),
         }
     }
 
     pub fn function_inputs(&self) -> Result<FunctionInputs<N>> {
         match self {
-            Self::Evaluate(_, _, function_inputs) => Ok(function_inputs.clone()),
+            Self::Evaluate(_, function_inputs) => Ok(function_inputs.clone()),
             _ => Err(anyhow!("operation does not have function inputs")),
         }
     }
@@ -117,11 +103,10 @@ impl<N: Network> FromBytes for Operation<N> {
             }
             3 => {
                 let function_id = FromBytes::read_le(&mut reader)?;
-                let function_type = FromBytes::read_le(&mut reader)?;
                 let function_inputs = FromBytes::read_le(&mut reader)?;
-                Ok(Self::Evaluate(function_id, function_type, function_inputs))
+                Ok(Self::Evaluate(function_id, function_inputs))
             }
-            _ => unreachable!("Invalid operation during deserialization"),
+            4.. => Err(error("Invalid operation ID during deserialization")),
         }
     }
 }
@@ -141,9 +126,8 @@ impl<N: Network> ToBytes for Operation<N> {
                 recipient.write_le(&mut writer)?;
                 amount.write_le(&mut writer)
             }
-            Self::Evaluate(function_id, function_type, function_inputs) => {
+            Self::Evaluate(function_id, function_inputs) => {
                 function_id.write_le(&mut writer)?;
-                function_type.write_le(&mut writer)?;
                 function_inputs.write_le(&mut writer)
             }
         }
@@ -172,11 +156,10 @@ impl<N: Network> FromStr for Operation<N> {
             }
             3 => {
                 let function_id = serde_json::from_value(operation["function_id"].clone())?;
-                let function_type = serde_json::from_value(operation["function_type"].clone())?;
                 let function_inputs = serde_json::from_value(operation["function_inputs"].clone())?;
-                Ok(Self::Evaluate(function_id, function_type, function_inputs))
+                Ok(Self::Evaluate(function_id, function_inputs))
             }
-            _ => unreachable!(format!("Invalid operation id {}", operation_id)),
+            4.. => Err(error("Invalid operation ID during deserialization").into()),
         }
     }
 }
@@ -204,11 +187,10 @@ impl<N: Network> fmt::Display for Operation<N> {
                     "amount": amount
                 })
             }
-            Self::Evaluate(function_id, function_type, function_inputs) => {
+            Self::Evaluate(function_id, function_inputs) => {
                 serde_json::json!({
                     "id": self.operation_id(),
                     "function_id": function_id,
-                    "function_type": function_type.id(),
                     "function_inputs": function_inputs
                 })
             }

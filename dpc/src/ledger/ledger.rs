@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -17,9 +17,9 @@
 use crate::prelude::*;
 
 use anyhow::{anyhow, Result};
-use chrono::Utc;
 use rand::{CryptoRng, Rng};
 use std::{collections::HashMap, sync::atomic::AtomicBool};
+use time::OffsetDateTime;
 
 #[derive(Clone, Debug)]
 pub struct Ledger<N: Network> {
@@ -34,11 +34,7 @@ pub struct Ledger<N: Network> {
 impl<N: Network> Ledger<N> {
     /// Initializes a new instance of the ledger.
     pub fn new() -> Result<Self> {
-        Ok(Self {
-            canon_blocks: Blocks::new()?,
-            orphan_blocks: Default::default(),
-            memory_pool: MemoryPool::new(),
-        })
+        Ok(Self { canon_blocks: Blocks::new()?, orphan_blocks: Default::default(), memory_pool: MemoryPool::new() })
     }
 
     /// Returns the latest block height.
@@ -152,31 +148,21 @@ impl<N: Network> Ledger<N> {
         is_public: bool,
         terminator: &AtomicBool,
         rng: &mut R,
-        gpu_index: i16,
     ) -> Result<Record<N>> {
         // Prepare the new block.
         let previous_block_hash = self.latest_block_hash();
         let block_height = self.latest_block_height() + 1;
 
         // Ensure that the new timestamp is ahead of the previous timestamp.
-        let block_timestamp = std::cmp::max(Utc::now().timestamp(), self.latest_block_timestamp()?.saturating_add(1));
+        let block_timestamp =
+            std::cmp::max(OffsetDateTime::now_utc().unix_timestamp(), self.latest_block_timestamp()?.saturating_add(1));
 
         // Compute the block difficulty target.
-        let difficulty_target = if N::NETWORK_ID == 2 && block_height <= crate::testnet2::V12_UPGRADE_BLOCK_HEIGHT {
-            Blocks::<N>::compute_difficulty_target(self.latest_block()?.header(), block_timestamp, block_height)
-        } else if N::NETWORK_ID == 2 {
-            let anchor_block_header = self
-                .canon_blocks
-                .get_block_header(crate::testnet2::V12_UPGRADE_BLOCK_HEIGHT)?;
-            Blocks::<N>::compute_difficulty_target(anchor_block_header, block_timestamp, block_height)
-        } else {
-            Blocks::<N>::compute_difficulty_target(N::genesis_block().header(), block_timestamp, block_height)
-        };
+        let difficulty_target =
+            Blocks::<N>::compute_difficulty_target(N::genesis_block().header(), block_timestamp, block_height);
 
         // Compute the cumulative weight.
-        let cumulative_weight = self
-            .latest_cumulative_weight()?
-            .saturating_add((u64::MAX / difficulty_target) as u128);
+        let cumulative_weight = self.latest_cumulative_weight()?.saturating_add((u64::MAX / difficulty_target) as u128);
 
         // Construct the new block transactions.
         let amount = Block::<N>::block_reward(block_height);
@@ -200,7 +186,7 @@ impl<N: Network> Ledger<N> {
         );
 
         // Mine the next block.
-        let block = Block::mine(&template, terminator, rng, gpu_index)?;
+        let block = Block::mine(&template, terminator, rng)?;
 
         // Attempt to add the block to the canon chain.
         self.add_next_block(&block)?;
@@ -248,9 +234,7 @@ mod tests {
             let recipient = Account::<Testnet1>::new(rng);
 
             assert_eq!(0, ledger.latest_block_height());
-            ledger
-                .mine_next_block(recipient.address(), true, &AtomicBool::new(false), rng)
-                .unwrap();
+            ledger.mine_next_block(recipient.address(), true, &AtomicBool::new(false), rng).unwrap();
             assert_eq!(1, ledger.latest_block_height());
         }
         {
@@ -258,9 +242,7 @@ mod tests {
             let recipient = Account::<Testnet2>::new(rng);
 
             assert_eq!(0, ledger.latest_block_height());
-            ledger
-                .mine_next_block(recipient.address(), true, &AtomicBool::new(false), rng)
-                .unwrap();
+            ledger.mine_next_block(recipient.address(), true, &AtomicBool::new(false), rng).unwrap();
             assert_eq!(1, ledger.latest_block_height());
         }
     }

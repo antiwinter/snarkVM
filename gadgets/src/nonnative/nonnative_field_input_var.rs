@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,28 +14,21 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{borrow::Borrow, marker::PhantomData, ops::Neg};
-
 use crate::{
     bits::boolean_input::BooleanInputGadget,
-    fields::FpGadget,
+    fields::{AllocatedFp, FpGadget},
+    nonnative::{AllocatedNonNativeFieldVar, NonNativeFieldVar},
     traits::{alloc::AllocGadget, eq::EqGadget, fields::FieldGadget},
     Boolean,
     FromFieldElementsGadget,
     MergeGadget,
     ToBitsLEGadget,
 };
+use snarkvm_algorithms::snark::marlin::params::{get_params, OptimizationType};
 use snarkvm_fields::PrimeField;
 use snarkvm_r1cs::{ConstraintSystem, LinearCombination, SynthesisError};
 
-use crate::{
-    fields::AllocatedFp,
-    nonnative::{
-        params::{get_params, OptimizationType},
-        AllocatedNonNativeFieldVar,
-        NonNativeFieldVar,
-    },
-};
+use core::{borrow::Borrow, marker::PhantomData, ops::Neg};
 
 /// Conversion of field elements by allocating them as nonnative field elements
 /// Used by Marlin
@@ -188,9 +181,7 @@ where
         for field_gadget in field_allocation.iter() {
             wrapped_field_allocation.push(NonNativeFieldVar::Var(field_gadget.clone()));
         }
-        Ok(Self {
-            val: wrapped_field_allocation,
-        })
+        Ok(Self { val: wrapped_field_allocation })
     }
 }
 
@@ -305,7 +296,7 @@ impl<F: PrimeField, CF: PrimeField> ToBitsLEGadget<CF> for NonNativeFieldInputVa
 mod test {
 
     use snarkvm_r1cs::{Fr, TestConstraintSystem};
-    use snarkvm_utilities::rand::{test_rng, UniformRand};
+    use snarkvm_utilities::rand::{test_rng, Uniform};
 
     use super::*;
     use crate::traits::eq::EqGadget;

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -255,17 +255,14 @@ impl Fp6Parameters for Fq6Parameters {
 
 #[cfg(test)]
 mod test {
-    use rand::SeedableRng;
-    use rand_xorshift::XorShiftRng;
-
     use snarkvm_fields::{One, Zero};
-    use snarkvm_utilities::rand::UniformRand;
+    use snarkvm_utilities::rand::{test_rng, Uniform};
 
     use super::*;
 
     #[test]
     fn test_fq2_mul_nonresidue() {
-        let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+        let mut rng = test_rng();
 
         let nqr = Fq2::new(Fq::zero(), Fq::one());
         println!("One: {:?}", Fq::one());

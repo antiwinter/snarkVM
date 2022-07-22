@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -114,14 +114,5 @@ impl PoseidonDefaultParameters for FrParameters {
         PoseidonDefaultParametersEntry::new(6, 3, 8, 84, 0),
         PoseidonDefaultParametersEntry::new(7, 3, 8, 84, 0),
         PoseidonDefaultParametersEntry::new(8, 3, 8, 84, 0),
-    ];
-    const PARAMS_OPT_FOR_WEIGHTS: [PoseidonDefaultParametersEntry; 7] = [
-        PoseidonDefaultParametersEntry::new(2, 257, 8, 13, 0),
-        PoseidonDefaultParametersEntry::new(3, 257, 8, 13, 0),
-        PoseidonDefaultParametersEntry::new(4, 257, 8, 13, 0),
-        PoseidonDefaultParametersEntry::new(5, 257, 8, 13, 0),
-        PoseidonDefaultParametersEntry::new(6, 257, 8, 13, 0),
-        PoseidonDefaultParametersEntry::new(7, 257, 8, 13, 0),
-        PoseidonDefaultParametersEntry::new(8, 257, 8, 13, 0),
     ];
 }

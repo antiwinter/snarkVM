@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,23 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-pub mod inner_circuit;
-pub use inner_circuit::*;
+pub mod input;
+pub use input::*;
 
-pub(crate) mod inner_private_variables;
-pub(crate) use inner_private_variables::*;
-
-pub(crate) mod inner_public_variables;
-pub(crate) use inner_public_variables::*;
-
-pub mod outer_circuit;
-pub use outer_circuit::*;
-
-pub(crate) mod outer_private_variables;
-pub(crate) use outer_private_variables::*;
-
-pub(crate) mod outer_public_variables;
-pub(crate) use outer_public_variables::*;
+pub mod output;
+pub use output::*;
 
 #[cfg(test)]
 mod tests;

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -15,15 +15,7 @@
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{fp6_3over2::*, Field, Fp2, Fp2Parameters, One, Zero};
-use snarkvm_utilities::{
-    bititerator::BitIteratorBE,
-    errors::SerializationError,
-    rand::UniformRand,
-    serialize::*,
-    FromBytes,
-    ToBits,
-    ToBytes,
-};
+use snarkvm_utilities::{bititerator::BitIteratorBE, rand::Uniform, serialize::*, FromBytes, ToBits, ToBytes};
 
 use rand::{
     distributions::{Distribution, Standard},
@@ -54,6 +46,7 @@ pub trait Fp12Parameters: 'static + Send + Sync + Copy {
     PartialEq(bound = "P: Fp12Parameters"),
     Eq(bound = "P: Fp12Parameters")
 )]
+#[must_use]
 pub struct Fp12<P: Fp12Parameters> {
     pub c0: Fp6<P::Fp6Params>,
     pub c1: Fp6<P::Fp6Params>,
@@ -215,7 +208,7 @@ impl<P: Fp12Parameters> std::fmt::Display for Fp12<P> {
 impl<P: Fp12Parameters> Distribution<Fp12<P>> for Standard {
     #[inline]
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Fp12<P> {
-        Fp12::new(UniformRand::rand(rng), UniformRand::rand(rng))
+        Fp12::new(Uniform::rand(rng), Uniform::rand(rng))
     }
 }
 
@@ -240,6 +233,12 @@ impl<P: Fp12Parameters> One for Fp12<P> {
 }
 
 impl<P: Fp12Parameters> Field for Fp12<P> {
+    type BasePrimeField = <Fp6<P::Fp6Params> as Field>::BasePrimeField;
+
+    fn from_base_prime_field(other: Self::BasePrimeField) -> Self {
+        Self::new(Fp6::from_base_prime_field(other), Fp6::zero())
+    }
+
     #[inline]
     fn characteristic<'a>() -> &'a [u64] {
         Fp6::<P::Fp6Params>::characteristic()
@@ -342,7 +341,6 @@ impl<P: Fp12Parameters> Neg for Fp12<P> {
     type Output = Self;
 
     #[inline]
-    #[must_use]
     fn neg(self) -> Self {
         let mut copy = Self::zero();
         copy.c0 = self.c0.neg();
@@ -436,11 +434,7 @@ impl<P: Fp12Parameters> Ord for Fp12<P> {
     #[inline(always)]
     fn cmp(&self, other: &Self) -> Ordering {
         let c1_cmp = self.c1.cmp(&other.c1);
-        if c1_cmp == Ordering::Equal {
-            self.c0.cmp(&other.c0)
-        } else {
-            c1_cmp
-        }
+        if c1_cmp == Ordering::Equal { self.c0.cmp(&other.c0) } else { c1_cmp }
     }
 }
 
@@ -516,44 +510,60 @@ impl<P: Fp12Parameters> FromBytes for Fp12<P> {
 
 impl<P: Fp12Parameters> CanonicalSerializeWithFlags for Fp12<P> {
     #[inline]
-    fn serialize_with_flags<W: Write, F: Flags>(&self, writer: &mut W, flags: F) -> Result<(), SerializationError> {
-        CanonicalSerialize::serialize(&self.c0, writer)?;
-        self.c1.serialize_with_flags(writer, flags)?;
+    fn serialize_with_flags<W: Write, F: Flags>(&self, mut writer: W, flags: F) -> Result<(), SerializationError> {
+        self.c0.serialize_uncompressed(&mut writer)?;
+        self.c1.serialize_with_flags(&mut writer, flags)?;
         Ok(())
+    }
+
+    fn serialized_size_with_flags<F: Flags>(&self) -> usize {
+        self.c0.uncompressed_size() + self.c1.serialized_size_with_flags::<F>()
     }
 }
 
 impl<P: Fp12Parameters> CanonicalSerialize for Fp12<P> {
     #[inline]
-    fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), SerializationError> {
+    fn serialize_with_mode<W: Write>(&self, writer: W, _compress: Compress) -> Result<(), SerializationError> {
         self.serialize_with_flags(writer, EmptyFlags)
     }
 
     #[inline]
-    fn serialized_size(&self) -> usize {
-        Self::SERIALIZED_SIZE
+    fn serialized_size(&self, compress: Compress) -> usize {
+        self.c0.serialized_size(compress) + self.c1.serialized_size(compress)
     }
-}
-
-impl<P: Fp12Parameters> ConstantSerializedSize for Fp12<P> {
-    const SERIALIZED_SIZE: usize = 2 * <Fp6<P::Fp6Params> as ConstantSerializedSize>::SERIALIZED_SIZE;
-    const UNCOMPRESSED_SIZE: usize = Self::SERIALIZED_SIZE;
 }
 
 impl<P: Fp12Parameters> CanonicalDeserializeWithFlags for Fp12<P> {
     #[inline]
-    fn deserialize_with_flags<R: Read, F: Flags>(reader: &mut R) -> Result<(Self, F), SerializationError> {
-        let c0 = CanonicalDeserialize::deserialize(reader)?;
-        let (c1, flags) = Fp6::deserialize_with_flags(reader)?;
-        Ok((Fp12::new(c0, c1), flags))
+    fn deserialize_with_flags<R: Read, F: Flags>(mut reader: R) -> Result<(Self, F), SerializationError> {
+        let c0 = CanonicalDeserialize::deserialize_uncompressed(&mut reader)?;
+        let (c1, flags) = Fp6::deserialize_with_flags(&mut reader)?;
+        Ok((Self::new(c0, c1), flags))
+    }
+}
+
+impl<P: Fp12Parameters> Valid for Fp12<P> {
+    fn check(&self) -> Result<(), snarkvm_utilities::SerializationError> {
+        Ok(())
+    }
+
+    fn batch_check<'a>(_batch: impl Iterator<Item = &'a Self>) -> Result<(), snarkvm_utilities::SerializationError>
+    where
+        Self: 'a,
+    {
+        Ok(())
     }
 }
 
 impl<P: Fp12Parameters> CanonicalDeserialize for Fp12<P> {
     #[inline]
-    fn deserialize<R: Read>(reader: &mut R) -> Result<Self, SerializationError> {
-        let c0 = CanonicalDeserialize::deserialize(reader)?;
-        let c1 = CanonicalDeserialize::deserialize(reader)?;
+    fn deserialize_with_mode<R: Read>(
+        mut reader: R,
+        compress: Compress,
+        validate: Validate,
+    ) -> Result<Self, SerializationError> {
+        let c0 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        let c1 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
         Ok(Fp12::new(c0, c1))
     }
 }

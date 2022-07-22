@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -19,10 +19,10 @@ use crate::{
         bls12::Bls12Parameters,
         short_weierstrass_jacobian::{Affine, Projective},
     },
-    traits::pairing_engine::AffineCurve,
+    traits::AffineCurve,
 };
 use snarkvm_fields::Zero;
-use snarkvm_utilities::{errors::SerializationError, serialize::*, FromBytes, ToBytes};
+use snarkvm_utilities::{serialize::*, FromBytes, ToBytes};
 
 use std::io::{Read, Result as IoResult, Write};
 

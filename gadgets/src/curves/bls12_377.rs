@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -50,20 +50,18 @@ mod test {
         },
     };
     use snarkvm_curves::{
-        bls12_377::{Fq, Fr, G1Projective as G1, G2Projective as G2},
-        traits::ProjectiveCurve,
-        Group,
+        bls12_377::{Fq, Fr, G1Affine as G1, G2Affine as G2},
+        AffineCurve,
+        ProjectiveCurve,
     };
     use snarkvm_fields::PrimeField;
     use snarkvm_r1cs::{ConstraintSystem, TestConstraintSystem};
-    use snarkvm_utilities::{bititerator::BitIteratorBE, rand::UniformRand};
+    use snarkvm_utilities::{
+        bititerator::BitIteratorBE,
+        rand::{test_rng, Uniform},
+    };
 
     use core::ops::Mul;
-    use rand::{
-        SeedableRng,
-        {self},
-    };
-    use rand_xorshift::XorShiftRng;
 
     #[test]
     fn bls12_g1_constraint_costs() {
@@ -111,63 +109,48 @@ mod test {
 
     #[test]
     fn bls12_g1_gadget_test() {
-        let mut rng = XorShiftRng::seed_from_u64(1231275789u64);
+        let mut rng = test_rng();
 
         let mut cs = TestConstraintSystem::<Fq>::new();
 
         let a = G1::rand(&mut rng);
         let b = G1::rand(&mut rng);
-        let a_affine = a.into_affine();
-        let b_affine = b.into_affine();
         let mut gadget_a = G1Gadget::alloc(&mut cs.ns(|| "a"), || Ok(a)).unwrap();
         let gadget_b = G1Gadget::alloc(&mut cs.ns(|| "b"), || Ok(b)).unwrap();
-        assert_eq!(gadget_a.x.get_value().unwrap(), a_affine.x);
-        assert_eq!(gadget_a.y.get_value().unwrap(), a_affine.y);
-        assert_eq!(gadget_b.x.get_value().unwrap(), b_affine.x);
-        assert_eq!(gadget_b.y.get_value().unwrap(), b_affine.y);
+        assert_eq!(gadget_a.x.get_value().unwrap(), a.x);
+        assert_eq!(gadget_a.y.get_value().unwrap(), a.y);
+        assert_eq!(gadget_b.x.get_value().unwrap(), b.x);
+        assert_eq!(gadget_b.y.get_value().unwrap(), b.y);
 
         // Check addition
-        let ab = a + b;
-        let ab_affine = ab.into_affine();
+        let ab = a.to_projective() + b.to_projective();
+        let ab_affine = ab.to_affine();
         let gadget_ab = gadget_a.add(&mut cs.ns(|| "ab"), &gadget_b).unwrap();
         let gadget_ba = gadget_b.add(&mut cs.ns(|| "ba"), &gadget_a).unwrap();
-        gadget_ba
-            .enforce_equal(&mut cs.ns(|| "b + a == a + b?"), &gadget_ab)
-            .unwrap();
+        gadget_ba.enforce_equal(&mut cs.ns(|| "b + a == a + b?"), &gadget_ab).unwrap();
 
-        let ab_val = gadget_ab
-            .get_value()
-            .expect("Doubling should be successful")
-            .into_affine();
+        let ab_val = gadget_ab.get_value().expect("Doubling should be successful");
         assert_eq!(ab_val, ab_affine, "Result of addition is unequal");
 
         // Check doubling
-        let aa = a.double();
-        let aa_affine = aa.into_affine();
+        let aa = a.to_projective().double();
+        let aa_affine = aa.to_affine();
         gadget_a.double_in_place(&mut cs.ns(|| "2a")).unwrap();
-        let aa_val = gadget_a
-            .get_value()
-            .expect("Doubling should be successful")
-            .into_affine();
+        let aa_val = gadget_a.get_value().expect("Doubling should be successful");
         assert_eq!(aa_val, aa_affine, "Gadget and native values are unequal after double.");
 
         // Check mul_bits
         let scalar = Fr::rand(&mut rng);
-        let native_result = aa.mul(scalar) + b;
-        let native_result = native_result.into_affine();
+        let native_result = aa.mul(scalar) + b.to_projective();
+        let native_result = native_result.to_affine();
 
         let mut scalar: Vec<bool> = BitIteratorBE::new(scalar.to_repr()).collect();
         // Get the scalar bits into little-endian form.
         scalar.reverse();
         let input = Vec::<Boolean>::alloc(cs.ns(|| "Input"), || Ok(scalar)).unwrap();
-        let result = gadget_a
-            .mul_bits(cs.ns(|| "mul_bits"), &gadget_b, input.into_iter())
-            .unwrap();
-        let result_val = result.get_value().unwrap().into_affine();
-        assert_eq!(
-            result_val, native_result,
-            "gadget & native values are diff. after scalar mul"
-        );
+        let result = gadget_a.mul_bits(cs.ns(|| "mul_bits"), &gadget_b, input.into_iter()).unwrap();
+        let result_val = result.get_value().unwrap();
+        assert_eq!(result_val, native_result, "gadget & native values are diff. after scalar mul");
 
         if !cs.is_satisfied() {
             println!("{:?}", cs.which_is_unsatisfied().unwrap());
@@ -182,30 +165,25 @@ mod test {
 
         let a: G2 = rand::random();
         let b: G2 = rand::random();
-        let a_affine = a.into_affine();
-        let b_affine = b.into_affine();
 
         let mut gadget_a = G2Gadget::alloc(&mut cs.ns(|| "a"), || Ok(a)).unwrap();
         let gadget_b = G2Gadget::alloc(&mut cs.ns(|| "b"), || Ok(b)).unwrap();
-        assert_eq!(gadget_a.x.get_value().unwrap(), a_affine.x);
-        assert_eq!(gadget_a.y.get_value().unwrap(), a_affine.y);
-        assert_eq!(gadget_b.x.get_value().unwrap(), b_affine.x);
-        assert_eq!(gadget_b.y.get_value().unwrap(), b_affine.y);
+        assert_eq!(gadget_a.x.get_value().unwrap(), a.x);
+        assert_eq!(gadget_a.y.get_value().unwrap(), a.y);
+        assert_eq!(gadget_b.x.get_value().unwrap(), b.x);
+        assert_eq!(gadget_b.y.get_value().unwrap(), b.y);
 
-        let ab = a + b;
-        let ab_affine = ab.into_affine();
+        let ab = a.to_projective() + b.to_projective();
+        let ab_affine = ab.to_affine();
         let gadget_ab = gadget_a.add(&mut cs.ns(|| "ab"), &gadget_b).unwrap();
         let gadget_ba = gadget_b.add(&mut cs.ns(|| "ba"), &gadget_a).unwrap();
-        gadget_ba
-            .enforce_equal(&mut cs.ns(|| "b + a == a + b?"), &gadget_ab)
-            .unwrap();
+        gadget_ba.enforce_equal(&mut cs.ns(|| "b + a == a + b?"), &gadget_ab).unwrap();
         assert_eq!(gadget_ab.x.get_value().unwrap(), ab_affine.x);
         assert_eq!(gadget_ab.y.get_value().unwrap(), ab_affine.y);
 
-        let aa = a.double();
-        let aa_affine = aa.into_affine();
+        let aa = a.to_projective().double();
+        let aa_affine = aa.to_affine();
         gadget_a.double_in_place(&mut cs.ns(|| "2a")).unwrap();
-
         assert_eq!(gadget_a.x.get_value().unwrap(), aa_affine.x);
         assert_eq!(gadget_a.y.get_value().unwrap(), aa_affine.y);
 
@@ -231,12 +209,8 @@ mod test {
         let a_is_eq_b = a.is_eq(cs.ns(|| "a_is_eq_b"), &b).unwrap();
         let a_is_eq_c = a.is_eq(cs.ns(|| "a_is_eq_c"), &c).unwrap();
 
-        a_is_eq_b
-            .enforce_equal(cs.ns(|| " a_is_eq_b is true"), &Boolean::constant(true))
-            .unwrap();
-        a_is_eq_c
-            .enforce_equal(cs.ns(|| " a_is_eq_c is false"), &Boolean::constant(false))
-            .unwrap();
+        a_is_eq_b.enforce_equal(cs.ns(|| " a_is_eq_b is true"), &Boolean::constant(true)).unwrap();
+        a_is_eq_c.enforce_equal(cs.ns(|| " a_is_eq_c is false"), &Boolean::constant(false)).unwrap();
 
         assert!(cs.is_satisfied());
     }
@@ -256,12 +230,8 @@ mod test {
         let a_is_eq_b = a.is_eq(cs.ns(|| "a_is_eq_b"), &b).unwrap();
         let a_is_eq_c = a.is_eq(cs.ns(|| "a_is_eq_c"), &c).unwrap();
 
-        a_is_eq_b
-            .enforce_equal(cs.ns(|| " a_is_eq_b is true"), &Boolean::constant(true))
-            .unwrap();
-        a_is_eq_c
-            .enforce_equal(cs.ns(|| " a_is_eq_c is false"), &Boolean::constant(false))
-            .unwrap();
+        a_is_eq_b.enforce_equal(cs.ns(|| " a_is_eq_b is true"), &Boolean::constant(true)).unwrap();
+        a_is_eq_c.enforce_equal(cs.ns(|| " a_is_eq_c is false"), &Boolean::constant(false)).unwrap();
 
         assert!(cs.is_satisfied());
     }

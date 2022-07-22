@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -24,15 +24,15 @@ use crate::{
     bits::ToBytesGadget,
     traits::{alloc::AllocGadget, fields::FieldGadget},
     CondSelectGadget,
-    CurveGadget,
+    GroupGadget,
     SumGadget,
     ToConstraintFieldGadget,
     ToMinimalBitsGadget,
 };
 
 pub trait PairingGadget<E: PairingEngine, F: PrimeField = <E as PairingEngine>::Fq> {
-    type G1Gadget: CurveGadget<E::G1Projective, F> + ToConstraintFieldGadget<F> + ToMinimalBitsGadget<F>;
-    type G2Gadget: CurveGadget<E::G2Projective, F> + ToConstraintFieldGadget<F> + ToMinimalBitsGadget<F>;
+    type G1Gadget: GroupGadget<E::G1Affine, F> + ToConstraintFieldGadget<F> + ToMinimalBitsGadget<F>;
+    type G2Gadget: GroupGadget<E::G2Affine, F> + ToConstraintFieldGadget<F> + ToMinimalBitsGadget<F>;
     type G1PreparedGadget: ToBytesGadget<F> + Clone + Debug;
     type G2PreparedGadget: ToBytesGadget<F>
         + AllocGadget<<E::G2Affine as PairingCurve>::Prepared, F>

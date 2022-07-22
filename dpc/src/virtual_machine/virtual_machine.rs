@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -18,11 +18,12 @@ use crate::{circuits::*, prelude::*};
 use snarkvm_algorithms::{merkle_tree::MerklePath, prelude::*};
 
 use anyhow::{anyhow, Result};
+use itertools::Itertools;
 use rand::{CryptoRng, Rng};
 use std::sync::Arc;
 
-#[derive(Derivative)]
-#[derivative(Clone(bound = "N: Network"), Debug(bound = "N: Network"))]
+#[derive(Clone, Derivative)]
+#[derivative(Debug(bound = "N: Network"))]
 pub struct VirtualMachine<N: Network> {
     /// The root of the ledger tree used to prove inclusion of ledger-consumed records.
     ledger_root: N::LedgerRoot,
@@ -30,6 +31,12 @@ pub struct VirtualMachine<N: Network> {
     local_transitions: Transitions<N>,
     /// The current list of transitions.
     transitions: Vec<Transition<N>>,
+    /// The current list of input circuits.
+    #[derivative(Debug = "ignore")]
+    input_circuits: Vec<InputCircuit<N>>,
+    /// The current list of output circuits.
+    #[derivative(Debug = "ignore")]
+    output_circuits: Vec<OutputCircuit<N>>,
 }
 
 impl<N: Network> VirtualMachine<N> {
@@ -39,6 +46,8 @@ impl<N: Network> VirtualMachine<N> {
             ledger_root,
             local_transitions: Transitions::new()?,
             transitions: Default::default(),
+            input_circuits: Default::default(),
+            output_circuits: Default::default(),
         })
     }
 
@@ -65,11 +74,10 @@ impl<N: Network> VirtualMachine<N> {
             Operation::Noop => Self::noop(request, rng)?,
             Operation::Coinbase(recipient, amount) => Self::coinbase(request, recipient, amount, rng)?,
             Operation::Transfer(caller, recipient, amount) => Self::transfer(request, caller, recipient, amount, rng)?,
-            Operation::Evaluate(function_id, function_type, function_inputs) => self.evaluate(
+            Operation::Evaluate(function_id, function_inputs) => self.evaluate(
                 request,
                 request.to_program_id()?,
                 &function_id,
-                &function_type,
                 &function_inputs,
                 vec![], // custom_events
                 rng,
@@ -77,52 +85,69 @@ impl<N: Network> VirtualMachine<N> {
         };
 
         let program_id = request.to_program_id()?;
-        let transition_id = response.transition_id();
-        let value_balance = response.value_balance();
+
+        // TODO (raychu86): Clean this up.
+        // Compute the input circuit proofs.
+        for (
+            ((((record, serial_number), ledger_proof), signature), input_value_commitment),
+            input_value_commitment_randomness,
+        ) in request
+            .records()
+            .iter()
+            .zip_eq(request.to_serial_numbers()?.iter())
+            .zip_eq(request.ledger_proofs())
+            .zip_eq(request.signatures())
+            .zip_eq(response.input_value_commitments())
+            .zip_eq(response.input_value_commitment_randomness())
+        {
+            let input_public = InputPublicVariables::<N>::new(
+                *serial_number,
+                input_value_commitment.clone(),
+                self.ledger_root,
+                self.local_transitions.root(),
+                program_id,
+            );
+            let input_private = InputPrivateVariables::<N>::new(
+                record.clone(),
+                ledger_proof.clone(),
+                signature.clone(),
+                *input_value_commitment_randomness,
+            )?;
+
+            let input_circuit = InputCircuit::<N>::new(input_public.clone(), input_private);
+            self.input_circuits.push(input_circuit);
+        }
+
+        // TODO (raychu86): Clean this up.
+        // Compute the output circuit proofs.
+        for (
+            (((record, commitment), encryption_randomness), output_value_commitment),
+            output_value_commitment_randomness,
+        ) in response
+            .records()
+            .iter()
+            .zip_eq(response.commitments())
+            .zip_eq(response.encryption_randomness())
+            .zip_eq(response.output_value_commitments())
+            .zip_eq(response.output_value_commitment_randomness())
+        {
+            let output_public =
+                OutputPublicVariables::<N>::new(commitment, output_value_commitment.clone(), program_id);
+            let output_private = OutputPrivateVariables::<N>::new(
+                record.clone(),
+                *encryption_randomness,
+                *output_value_commitment_randomness,
+            )?;
+
+            let output_circuit = OutputCircuit::<N>::new(output_public.clone(), output_private);
+            self.output_circuits.push(output_circuit);
+        }
 
         // Compute the noop execution, for now.
-        let execution = Execution {
-            program_id: *N::noop_program_id(),
-            program_path: N::noop_program_path().clone(),
-            verifying_key: N::noop_circuit_verifying_key().clone(),
-            proof: Noop::<N>::new().execute(
-                ProgramPublicVariables::new(transition_id),
-                &NoopPrivateVariables::<N>::new_blank()?,
-            )?,
-        };
-
-        // Compute the inner circuit proof, and verify that the inner proof passes.
-        let inner_public = InnerPublicVariables::new(
-            transition_id,
-            value_balance,
-            self.ledger_root,
-            self.local_transitions.root(),
-            Some(program_id),
-        );
-        let inner_private = InnerPrivateVariables::new(request, &response)?;
-        let inner_circuit = InnerCircuit::<N>::new(inner_public, inner_private);
-        let inner_proof = N::InnerSNARK::prove(N::inner_proving_key(), &inner_circuit, rng, -1)?;
-
-        assert!(N::InnerSNARK::verify(
-            N::inner_verifying_key(),
-            &inner_public,
-            &inner_proof
-        )?);
-
-        // Construct the outer circuit public and private variables.
-        let outer_public = OuterPublicVariables::new(inner_public, N::inner_circuit_id());
-        let outer_private = OuterPrivateVariables::new(N::inner_verifying_key().clone(), inner_proof.into(), execution);
-        let outer_circuit = OuterCircuit::<N>::new(outer_public.clone(), outer_private);
-        let outer_proof = N::OuterSNARK::prove(N::outer_proving_key(), &outer_circuit, rng, -1)?;
-
-        assert!(N::OuterSNARK::verify(
-            N::outer_verifying_key(),
-            &outer_public,
-            &outer_proof
-        )?);
+        let execution = Execution::from(None)?;
 
         // Construct the transition.
-        let transition = Transition::<N>::new(request, &response, outer_proof.into())?;
+        let transition = Transition::<N>::new(request, &response, execution)?;
 
         // Update the state of the virtual machine.
         self.local_transitions.add(&transition)?;
@@ -132,8 +157,24 @@ impl<N: Network> VirtualMachine<N> {
     }
 
     /// Finalizes the virtual machine state and returns a transaction.
-    pub fn finalize(&self) -> Result<Transaction<N>> {
-        Transaction::from(*N::inner_circuit_id(), self.ledger_root, self.transitions.clone())
+    pub fn finalize<R: Rng + CryptoRng>(&self, rng: &mut R) -> Result<Transaction<N>> {
+        let input_proof = (!self.input_circuits.is_empty())
+            .then(|| N::InputSNARK::prove_batch(N::input_proving_key(), &self.input_circuits, rng))
+            .transpose()?
+            .map(Into::into);
+        let output_proof = (!self.output_circuits.is_empty())
+            .then(|| N::OutputSNARK::prove_batch(N::output_proving_key(), &self.output_circuits, rng))
+            .transpose()?
+            .map(Into::into);
+        let kernel_proof = KernelProof::<N> { input_proof, output_proof };
+
+        Transaction::from(
+            *N::input_circuit_id(),
+            *N::output_circuit_id(),
+            self.ledger_root,
+            self.transitions.clone(),
+            kernel_proof,
+        )
     }
 
     /// Performs a noop transition.
@@ -150,10 +191,11 @@ impl<N: Network> VirtualMachine<N> {
     ) -> Result<Response<N>> {
         ResponseBuilder::new()
             .add_request(request.clone())
-            .add_output(Output::new(recipient, amount, Default::default(), None)?)
+            .add_output(Output::new(recipient, amount, None, None)?)
             .build(rng)
     }
 
+    // TODO (raychu86): Add support for multiple recipients.
     /// Transfers the given `amount` from `caller` to `recipient`.
     fn transfer<R: Rng + CryptoRng>(
         request: &Request<N>,
@@ -181,8 +223,8 @@ impl<N: Network> VirtualMachine<N> {
 
         ResponseBuilder::new()
             .add_request(request.clone())
-            .add_output(Output::new(caller, caller_balance, Default::default(), None)?)
-            .add_output(Output::new(recipient, amount, Default::default(), None)?)
+            .add_output(Output::new(caller, caller_balance, None, None)?)
+            .add_output(Output::new(recipient, amount, None, None)?)
             .build(rng)
     }
 
@@ -190,9 +232,8 @@ impl<N: Network> VirtualMachine<N> {
     fn evaluate<R: Rng + CryptoRng>(
         &self,
         request: &Request<N>,
-        program_id: N::ProgramID,
+        program_id: Option<N::ProgramID>,
         function_id: &N::FunctionID,
-        _function_type: &FunctionType,
         function_inputs: &FunctionInputs<N>,
         custom_events: Vec<Vec<u8>>,
         rng: &mut R,
@@ -202,7 +243,7 @@ impl<N: Network> VirtualMachine<N> {
         // Check that the function id exists in the program.
 
         // Check that the function id is the same as the request.
-        if function_id != &request.function_id() {
+        if Some(*function_id) != request.function_id() {
             return Err(anyhow!("Invalid function id"));
         }
 
@@ -223,23 +264,17 @@ impl<N: Network> VirtualMachine<N> {
             return Err(VMError::BalanceInsufficient.into());
         }
 
-        let mut response_builder = ResponseBuilder::new()
-            .add_request(request.clone())
-            .add_output(Output::new(
-                function_inputs.recipient,
-                function_inputs.amount,
-                function_inputs.record_payload.clone(),
-                Some(program_id),
-            )?);
+        let mut response_builder = ResponseBuilder::new().add_request(request.clone()).add_output(Output::new(
+            function_inputs.recipient,
+            function_inputs.amount,
+            Some(function_inputs.record_payload.clone()),
+            program_id,
+        )?);
 
         // Add the change address if the balance is not zero.
         if !caller_balance.is_zero() {
-            response_builder = response_builder.add_output(Output::new(
-                function_inputs.caller,
-                caller_balance,
-                Default::default(),
-                None,
-            )?)
+            response_builder =
+                response_builder.add_output(Output::new(function_inputs.caller, caller_balance, None, None)?)
         }
 
         // Add custom events to the response.
@@ -276,67 +311,89 @@ impl<N: Network> VirtualMachine<N> {
         // Compute the operation.
         let operation = request.operation().clone();
         let response = match operation {
-            Operation::Evaluate(function_id, function_type, function_inputs) => self.evaluate(
-                request,
-                program_id,
-                &function_id,
-                &function_type,
-                &function_inputs,
-                custom_events,
-                rng,
-            )?,
+            Operation::Evaluate(function_id, function_inputs) => {
+                self.evaluate(request, Some(program_id), &function_id, &function_inputs, custom_events, rng)?
+            }
             _ => return Err(anyhow!("Invalid Operation")),
         };
 
         let transition_id = response.transition_id();
-        let value_balance = response.value_balance();
-
-        // Compute the inner circuit proof, and verify that the inner proof passes.
-        let inner_public = InnerPublicVariables::new(
-            transition_id,
-            value_balance,
-            self.ledger_root,
-            self.local_transitions.root(),
-            Some(program_id),
-        );
-        let inner_private = InnerPrivateVariables::new(request, &response)?;
-        let inner_circuit = InnerCircuit::<N>::new(inner_public, inner_private);
-        let inner_proof = N::InnerSNARK::prove(N::inner_proving_key(), &inner_circuit, rng, -1)?;
-
-        assert!(N::InnerSNARK::verify(
-            N::inner_verifying_key(),
-            &inner_public,
-            &inner_proof
-        )?);
 
         // Compute the execution.
-        let proof = function.execute(ProgramPublicVariables::new(transition_id), private_variables)?;
+        let program_proof = function.execute(ProgramPublicVariables::new(transition_id), private_variables)?;
         let public_variables = ProgramPublicVariables::new(transition_id);
 
-        assert!(function.verify(&public_variables, &proof));
+        assert!(function.verify(&public_variables, &program_proof));
         assert!(function_path.verify(&program_id, &function.function_id())?);
 
-        let execution = Execution {
+        // TODO (raychu86): Clean this up.
+        // Compute the input circuit proofs.
+        for (
+            ((((record, serial_number), ledger_proof), signature), input_value_commitment),
+            input_value_commitment_randomness,
+        ) in request
+            .records()
+            .iter()
+            .zip_eq(request.to_serial_numbers()?.iter())
+            .zip_eq(request.ledger_proofs())
+            .zip_eq(request.signatures())
+            .zip_eq(response.input_value_commitments())
+            .zip_eq(response.input_value_commitment_randomness())
+        {
+            let input_public = InputPublicVariables::<N>::new(
+                *serial_number,
+                input_value_commitment.clone(),
+                self.ledger_root,
+                self.local_transitions.root(),
+                Some(program_id),
+            );
+            let input_private = InputPrivateVariables::<N>::new(
+                record.clone(),
+                ledger_proof.clone(),
+                signature.clone(),
+                *input_value_commitment_randomness,
+            )?;
+
+            let input_circuit = InputCircuit::<N>::new(input_public, input_private);
+
+            self.input_circuits.push(input_circuit);
+        }
+
+        // TODO (raychu86): Clean this up.
+        // Compute the output circuit proofs.
+        for (
+            (((record, commitment), encryption_randomness), output_value_commitment),
+            output_value_commitment_randomness,
+        ) in response
+            .records()
+            .iter()
+            .zip_eq(response.commitments())
+            .zip_eq(response.encryption_randomness())
+            .zip_eq(response.output_value_commitments())
+            .zip_eq(response.output_value_commitment_randomness())
+        {
+            let output_public =
+                OutputPublicVariables::<N>::new(commitment, output_value_commitment.clone(), Some(program_id));
+            let output_private = OutputPrivateVariables::<N>::new(
+                record.clone(),
+                *encryption_randomness,
+                *output_value_commitment_randomness,
+            )?;
+
+            let output_circuit = OutputCircuit::<N>::new(output_public, output_private);
+
+            self.output_circuits.push(output_circuit);
+        }
+
+        let execution = Execution::from(Some(ProgramExecution::from(
             program_id,
-            program_path: function_path.clone(),
-            verifying_key: function_verifying_key,
-            proof,
-        };
-
-        // Construct the outer circuit public and private variables.
-        let outer_public = OuterPublicVariables::new(inner_public, N::inner_circuit_id());
-        let outer_private = OuterPrivateVariables::new(N::inner_verifying_key().clone(), inner_proof.into(), execution);
-        let outer_circuit = OuterCircuit::<N>::new(outer_public.clone(), outer_private);
-        let outer_proof = N::OuterSNARK::prove(N::outer_proving_key(), &outer_circuit, rng, -1)?;
-
-        assert!(N::OuterSNARK::verify(
-            N::outer_verifying_key(),
-            &outer_public,
-            &outer_proof
-        )?);
+            function_path.clone(),
+            function_verifying_key,
+            program_proof,
+        )?))?;
 
         // Construct the transition.
-        let transition = Transition::<N>::new(request, &response, outer_proof.into())?;
+        let transition = Transition::<N>::new(request, &response, execution)?;
 
         // Update the state of the virtual machine.
         self.local_transitions.add(&transition)?;

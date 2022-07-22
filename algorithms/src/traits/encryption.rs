@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,20 +14,19 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::EncryptionError;
-use snarkvm_utilities::{rand::UniformRand, FromBytes, ToBits, ToBytes};
+use snarkvm_utilities::{rand::Uniform, FromBytes, ToBits, ToBytes};
 
+use anyhow::Result;
 use rand::{CryptoRng, Rng};
 use std::{fmt::Debug, hash::Hash};
 
-pub trait EncryptionScheme:
-    Sized + ToBytes + FromBytes + Debug + Clone + Eq + From<<Self as EncryptionScheme>::Parameters>
-{
+pub trait EncryptionScheme: Sized + Debug + Clone + PartialEq + Eq {
     type CiphertextRandomizer: Clone + Debug + Default + Eq + Hash + ToBytes + FromBytes + ToBits;
+    type MessageType: Clone + Debug + Default + Eq + Hash + ToBytes + FromBytes + ToBits;
     type Parameters: Clone + Debug + Eq;
-    type PrivateKey: Clone + Debug + Default + Eq + Hash + ToBytes + FromBytes + ToBits + UniformRand;
+    type PrivateKey: Clone + Debug + Default + Eq + Hash + ToBytes + FromBytes + ToBits + Uniform;
     type PublicKey: Copy + Clone + Debug + Default + Eq + ToBytes + FromBytes;
-    type ScalarRandomness: Copy + Clone + Debug + Default + Eq + Hash + ToBytes + FromBytes + UniformRand;
+    type ScalarRandomness: Copy + Clone + Debug + Default + Eq + Hash + ToBytes + FromBytes + Uniform + Sync;
     type SymmetricKey: Copy + Clone + Debug + Default + Eq + Hash + ToBytes + FromBytes + Send + Sync;
     type SymmetricKeyCommitment: Copy + Clone + Debug + Default + Eq + Hash + ToBytes + FromBytes + Send + Sync;
 
@@ -51,11 +50,13 @@ pub trait EncryptionScheme:
 
     fn generate_symmetric_key_commitment(&self, symmetric_key: &Self::SymmetricKey) -> Self::SymmetricKeyCommitment;
 
-    fn encrypt(&self, symmetric_key: &Self::SymmetricKey, message: &[u8]) -> Result<Vec<u8>, EncryptionError>;
+    fn encode_message(message: &[u8]) -> Result<Vec<Self::MessageType>>;
 
-    fn decrypt(&self, symmetric_key: &Self::SymmetricKey, ciphertext: &[u8]) -> Result<Vec<u8>, EncryptionError>;
+    fn decode_message(encoded_message: &[Self::MessageType]) -> Result<Vec<u8>>;
+
+    fn encrypt(&self, symmetric_key: &Self::SymmetricKey, message: &[Self::MessageType]) -> Vec<Self::MessageType>;
+
+    fn decrypt(&self, symmetric_key: &Self::SymmetricKey, ciphertext: &[Self::MessageType]) -> Vec<Self::MessageType>;
 
     fn parameters(&self) -> &<Self as EncryptionScheme>::Parameters;
-
-    fn private_key_size_in_bits() -> usize;
 }

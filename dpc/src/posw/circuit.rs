@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -34,7 +34,7 @@ use anyhow::Result;
 pub struct PoSWCircuit<N: Network> {
     block_header_root: N::BlockHeaderRoot,
     nonce: N::PoSWNonce,
-    hashed_leaves: Vec<<<N::BlockHeaderRootParameters as MerkleParameters>::H as CRH>::Output>,
+    hashed_leaves: Vec<<<N::BlockHeaderRootParameters as MerkleParameters>::LeafCRH as CRH>::Output>,
 }
 
 impl<N: Network> PoSWCircuit<N> {
@@ -42,26 +42,12 @@ impl<N: Network> PoSWCircuit<N> {
     pub fn new(block_template: &BlockTemplate<N>, nonce: N::PoSWNonce) -> Result<Self> {
         let tree = block_template.to_header_tree()?;
 
-        Ok(Self {
-            block_header_root: (*tree.root()).into(),
-            nonce,
-            hashed_leaves: tree.hashed_leaves().to_vec(),
-        })
-    }
-
-    pub fn from_raw(block_header_root: N::BlockHeaderRoot, nonce: N::PoSWNonce, hashed_leaves: Vec<<<N::BlockHeaderRootParameters as MerkleParameters>::H as CRH>::Output>) -> Self {
-        Self {
-            block_header_root,
-            nonce,
-            hashed_leaves,
-        }
+        Ok(Self { block_header_root: (*tree.root()).into(), nonce, hashed_leaves: tree.hashed_leaves().to_vec() })
     }
 
     /// Creates a blank PoSW circuit for setup.
     pub fn blank() -> Result<Self> {
-        let empty_hash = N::block_header_root_parameters()
-            .hash_empty()
-            .map_err(|_| SynthesisError::Unsatisfiable)?;
+        let empty_hash = N::block_header_root_parameters().hash_empty().map_err(|_| SynthesisError::Unsatisfiable)?;
 
         Ok(Self {
             block_header_root: Default::default(),
@@ -96,12 +82,13 @@ impl<N: Network> ConstraintSynthesizer<N::InnerScalarField> for PoSWCircuit<N> {
         // Note: This is *not* enforced in the circuit.
         assert_eq!(usize::pow(2, N::HEADER_TREE_DEPTH as u32), self.hashed_leaves.len());
 
-        let crh_parameters = N::BlockHeaderRootCRHGadget::alloc_constant(&mut cs.ns(|| "new_parameters"), || {
-            Ok(N::block_header_root_parameters().crh())
-        })?;
+        let two_to_one_crh_parameters =
+            N::BlockHeaderRootTwoToOneCRHGadget::alloc_constant(&mut cs.ns(|| "new_parameters"), || {
+                Ok(N::block_header_root_parameters().two_to_one_crh())
+            })?;
 
-        let mask_crh_parameters = <N::BlockHeaderRootCRHGadget as MaskedCRHGadget<
-            <N::BlockHeaderRootParameters as MerkleParameters>::H,
+        let mask_crh_parameters = <N::BlockHeaderRootTwoToOneCRHGadget as MaskedCRHGadget<
+            <N::BlockHeaderRootParameters as MerkleParameters>::TwoToOneCRH,
             N::InnerScalarField,
         >>::MaskParametersGadget::alloc_constant(
             &mut cs.ns(|| "new_mask_parameters"),
@@ -133,9 +120,8 @@ impl<N: Network> ConstraintSynthesizer<N::InnerScalarField> for PoSWCircuit<N> {
             .iter()
             .enumerate()
             .map(|(i, leaf)| {
-                println!("gen cs {} {}", i, leaf);
                 <N::BlockHeaderRootCRHGadget as CRHGadget<
-                    <N::BlockHeaderRootParameters as MerkleParameters>::H,
+                    <N::BlockHeaderRootParameters as MerkleParameters>::LeafCRH,
                     N::InnerScalarField,
                 >>::OutputGadget::alloc(cs.ns(|| format!("leaf {}", i)), || Ok(leaf))
             })
@@ -143,14 +129,14 @@ impl<N: Network> ConstraintSynthesizer<N::InnerScalarField> for PoSWCircuit<N> {
 
         // Compute the root using the masked tree.
         let candidate_root = compute_masked_root::<
-            <N::BlockHeaderRootParameters as MerkleParameters>::H,
-            N::BlockHeaderRootCRHGadget,
+            <N::BlockHeaderRootParameters as MerkleParameters>::TwoToOneCRH,
+            N::BlockHeaderRootTwoToOneCRHGadget,
             _,
             _,
             _,
         >(
             cs.ns(|| "compute masked root"),
-            &crh_parameters,
+            &two_to_one_crh_parameters,
             &mask_crh_parameters,
             &mask_bytes,
             &hashed_leaf_gadgets,
@@ -167,9 +153,9 @@ impl<N: Network> ConstraintSynthesizer<N::InnerScalarField> for PoSWCircuit<N> {
 mod test {
     use super::*;
     use crate::{testnet1::Testnet1, testnet2::Testnet2, PoSWProof};
-    use snarkvm_marlin::marlin::MarlinTestnet1Mode;
+    use snarkvm_algorithms::snark::marlin::{ahp::AHPForR1CS, MarlinHidingMode};
     use snarkvm_r1cs::TestConstraintSystem;
-    use snarkvm_utilities::{FromBytes, ToBytes, UniformRand};
+    use snarkvm_utilities::{FromBytes, ToBytes, Uniform};
 
     use rand::{rngs::ThreadRng, thread_rng, CryptoRng, Rng};
     use std::time::Instant;
@@ -178,10 +164,7 @@ mod test {
         let mut cs = TestConstraintSystem::<N::InnerScalarField>::new();
 
         // Synthesize the PoSW circuit.
-        PoSWCircuit::<N>::blank()
-            .unwrap()
-            .generate_constraints(&mut cs.ns(|| "PoSW circuit"))
-            .unwrap();
+        PoSWCircuit::<N>::blank().unwrap().generate_constraints(&mut cs.ns(|| "PoSW circuit")).unwrap();
 
         // Check that the constraint system was satisfied.
         if !cs.is_satisfied() {
@@ -197,10 +180,8 @@ mod test {
     fn posw_proof_test<N: Network, R: Rng + CryptoRng>(rng: &mut R) {
         // Generate the proving and verifying key.
         let (proving_key, verifying_key) = {
-            let max_degree = snarkvm_marlin::ahp::AHPForR1CS::<N::InnerScalarField, MarlinTestnet1Mode>::max_degree(
-                20000, 20000, 200000,
-            )
-            .unwrap();
+            let max_degree =
+                AHPForR1CS::<N::InnerScalarField, MarlinHidingMode>::max_degree(20000, 20000, 200000).unwrap();
             let universal_srs = <<N as Network>::PoSWSNARK as SNARK>::universal_setup(&max_degree, rng).unwrap();
 
             <<N as Network>::PoSWSNARK as SNARK>::setup::<_, R>(
@@ -211,7 +192,7 @@ mod test {
         };
 
         // Sample a random nonce.
-        let nonce = UniformRand::rand(rng);
+        let nonce = Uniform::rand(rng);
 
         // Construct the block template.
         let block = N::genesis_block();

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -43,9 +43,7 @@ fn marlin_posw(c: &mut Criterion) {
 
     group.bench_function("mine", |b| {
         b.iter(|| {
-            Testnet2::posw()
-                .mine(&block_template, &AtomicBool::new(false), rng)
-                .unwrap();
+            Testnet2::posw().mine(&block_template, &AtomicBool::new(false), rng).unwrap();
         });
     });
 

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -15,7 +15,13 @@
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{Field, LegendreSymbol, One, PrimeField, SquareRootField, Zero};
-use snarkvm_utilities::{errors::SerializationError, rand::UniformRand, serialize::*, FromBytes, ToBits, ToBytes};
+use snarkvm_utilities::{
+    rand::Uniform,
+    serialize::{SerializationError, *},
+    FromBytes,
+    ToBits,
+    ToBytes,
+};
 
 use rand::{
     distributions::{Distribution, Standard},
@@ -99,6 +105,12 @@ impl<P: Fp2Parameters> One for Fp2<P> {
 }
 
 impl<P: Fp2Parameters> Field for Fp2<P> {
+    type BasePrimeField = P::Fp;
+
+    fn from_base_prime_field(other: Self::BasePrimeField) -> Self {
+        Self::new(other, P::Fp::zero())
+    }
+
     #[inline]
     fn characteristic<'a>() -> &'a [u64] {
         P::Fp::characteristic()
@@ -188,7 +200,7 @@ impl<P: Fp2Parameters> Field for Fp2<P> {
     }
 }
 
-impl<'a, P: Fp2Parameters> SquareRootField for Fp2<P>
+impl<P: Fp2Parameters> SquareRootField for Fp2<P>
 where
     P::Fp: SquareRootField,
 {
@@ -207,13 +219,8 @@ where
             Zero => Some(*self),
             QuadraticNonResidue => None,
             QuadraticResidue => {
-                let mut two_inv = P::Fp::one().double();
-                two_inv = two_inv.inverse().expect("Two should always have an inverse");
-                
-                let alpha = self
-                    .norm()
-                    .sqrt()
-                    .expect("We are in the QR case, the norm should have a square root");
+                let two_inv = P::Fp::half();
+                let alpha = self.norm().sqrt().expect("We are in the QR case, the norm should have a square root");
                 let mut delta = (alpha + self.c0) * two_inv;
                 if delta.legendre().is_qnr() {
                     delta -= &alpha;
@@ -331,7 +338,7 @@ impl<P: Fp2Parameters> Neg for Fp2<P> {
 impl<P: Fp2Parameters> Distribution<Fp2<P>> for Standard {
     #[inline]
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Fp2<P> {
-        Fp2::new(UniformRand::rand(rng), UniformRand::rand(rng))
+        Fp2::new(Uniform::rand(rng), Uniform::rand(rng))
     }
 }
 
@@ -430,44 +437,61 @@ impl<P: Fp2Parameters> std::fmt::Display for Fp2<P> {
 
 impl<P: Fp2Parameters> CanonicalSerializeWithFlags for Fp2<P> {
     #[inline]
-    fn serialize_with_flags<W: Write, F: Flags>(&self, writer: &mut W, flags: F) -> Result<(), SerializationError> {
-        CanonicalSerialize::serialize(&self.c0, writer)?;
-        self.c1.serialize_with_flags(writer, flags)?;
+    fn serialize_with_flags<W: Write, F: Flags>(&self, mut writer: W, flags: F) -> Result<(), SerializationError> {
+        CanonicalSerialize::serialize_uncompressed(&self.c0, &mut writer)?;
+        self.c1.serialize_with_flags(&mut writer, flags)?;
         Ok(())
+    }
+
+    fn serialized_size_with_flags<F: Flags>(&self) -> usize {
+        self.c0.uncompressed_size() + self.c1.serialized_size_with_flags::<F>()
     }
 }
 
 impl<P: Fp2Parameters> CanonicalSerialize for Fp2<P> {
     #[inline]
-    fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), SerializationError> {
+    fn serialize_with_mode<W: Write>(&self, writer: W, _compress: Compress) -> Result<(), SerializationError> {
         self.serialize_with_flags(writer, EmptyFlags)
     }
 
     #[inline]
-    fn serialized_size(&self) -> usize {
-        Self::SERIALIZED_SIZE
+    fn serialized_size(&self, compress: Compress) -> usize {
+        self.c0.serialized_size(compress) + self.c1.serialized_size(compress)
     }
-}
-
-impl<P: Fp2Parameters> ConstantSerializedSize for Fp2<P> {
-    const SERIALIZED_SIZE: usize = 2 * <P::Fp as ConstantSerializedSize>::SERIALIZED_SIZE;
-    const UNCOMPRESSED_SIZE: usize = Self::SERIALIZED_SIZE;
 }
 
 impl<P: Fp2Parameters> CanonicalDeserializeWithFlags for Fp2<P> {
     #[inline]
-    fn deserialize_with_flags<R: Read, F: Flags>(reader: &mut R) -> Result<(Self, F), SerializationError> {
-        let c0: P::Fp = CanonicalDeserialize::deserialize(reader)?;
-        let (c1, flags): (P::Fp, _) = CanonicalDeserializeWithFlags::deserialize_with_flags(reader)?;
+    fn deserialize_with_flags<R: Read, F: Flags>(mut reader: R) -> Result<(Self, F), SerializationError> {
+        let c0: P::Fp = CanonicalDeserialize::deserialize_uncompressed(&mut reader)?;
+        let (c1, flags): (P::Fp, _) = CanonicalDeserializeWithFlags::deserialize_with_flags(&mut reader)?;
         Ok((Fp2::new(c0, c1), flags))
+    }
+}
+impl<P: Fp2Parameters> Valid for Fp2<P> {
+    fn check(&self) -> Result<(), snarkvm_utilities::SerializationError> {
+        Ok(())
+    }
+
+    fn batch_check<'a>(
+        _batch: impl Iterator<Item = &'a Self> + Send,
+    ) -> Result<(), snarkvm_utilities::SerializationError>
+    where
+        Self: 'a,
+    {
+        Ok(())
     }
 }
 
 impl<P: Fp2Parameters> CanonicalDeserialize for Fp2<P> {
     #[inline]
-    fn deserialize<R: Read>(reader: &mut R) -> Result<Self, SerializationError> {
-        let c0: P::Fp = CanonicalDeserialize::deserialize(reader)?;
-        let c1: P::Fp = CanonicalDeserialize::deserialize(reader)?;
+    fn deserialize_with_mode<R: Read>(
+        mut reader: R,
+        compress: Compress,
+        validate: Validate,
+    ) -> Result<Self, SerializationError> {
+        let c0 = P::Fp::deserialize_with_mode(&mut reader, compress, validate)?;
+        let c1 = P::Fp::deserialize_with_mode(&mut reader, compress, validate)?;
         Ok(Fp2::new(c0, c1))
     }
 }

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,12 +14,16 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-use snarkvm_fields::{field, Zero};
-use snarkvm_utilities::biginteger::{BigInteger256, BigInteger384};
+use snarkvm_fields::{field, Field, Zero};
+use snarkvm_utilities::{
+    biginteger::{BigInteger256, BigInteger384},
+    BitIteratorBE,
+};
 
 use crate::{
     bls12_377::{g1::Bls12_377G1Parameters, Fq, Fq2, Fr},
     traits::{ModelParameters, ShortWeierstrassParameters},
+    AffineCurve,
 };
 
 #[derive(Clone, Default, PartialEq, Eq)]
@@ -72,17 +76,18 @@ impl ShortWeierstrassParameters for Bls12_377G2Parameters {
     /// = 6764900296503390671038341982857278410319949526107311149686707033187604810669
     const COFACTOR_INV: Fr = field!(
         Fr,
-        BigInteger256([
-            15499857013495546999,
-            4613531467548868169,
-            14546778081091178013,
-            549402535258503313,
-        ])
+        BigInteger256([15499857013495546999, 4613531467548868169, 14546778081091178013, 549402535258503313,])
     );
 
     #[inline(always)]
     fn mul_by_a(_: &Self::BaseField) -> Self::BaseField {
         Self::BaseField::zero()
+    }
+
+    fn is_in_correct_subgroup_assuming_on_curve(
+        p: &crate::templates::short_weierstrass_jacobian::Affine<Self>,
+    ) -> bool {
+        p.mul_bits(BitIteratorBE::new(Self::ScalarField::characteristic())).is_zero()
     }
 }
 

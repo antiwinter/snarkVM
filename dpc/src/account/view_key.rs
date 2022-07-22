@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -26,13 +26,7 @@ use std::{
     str::FromStr,
 };
 
-#[derive(Derivative)]
-#[derivative(
-    Clone(bound = "N: Network"),
-    Default(bound = "N: Network"),
-    PartialEq(bound = "N: Network"),
-    Eq(bound = "N: Network")
-)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ViewKey<N: Network>(<N::AccountEncryptionScheme as EncryptionScheme>::PrivateKey);
 
 impl<N: Network> ViewKey<N> {
@@ -91,9 +85,7 @@ impl<N: Network> fmt::Display for ViewKey<N> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut view_key = [0u8; 39];
         view_key[0..7].copy_from_slice(&account_format::VIEW_KEY_PREFIX);
-        self.0
-            .write_le(&mut view_key[7..39])
-            .expect("view key formatting failed");
+        self.0.write_le(&mut view_key[7..39]).expect("view key formatting failed");
 
         write!(f, "{}", view_key.to_base58())
     }

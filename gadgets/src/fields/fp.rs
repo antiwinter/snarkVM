@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -85,9 +85,7 @@ impl<F: PrimeField> AllocatedFp<F> {
     /// Constructs `Self` from a `Boolean`:
     ///     if `cond` is false, this outputs `zero`, else it outputs `one`.
     pub fn from_boolean<CS: ConstraintSystem<F>>(mut cs: CS, cond: Boolean) -> Result<Self, SynthesisError> {
-        Self::alloc(cs.ns(|| ""), || {
-            cond.get_value().map(|value| F::from(value as u128)).get()
-        })
+        Self::alloc(cs.ns(|| ""), || cond.get_value().map(|value| F::from(value as u128)).get())
     }
 
     #[inline]
@@ -103,19 +101,13 @@ impl<F: PrimeField> AllocatedFp<F> {
     #[inline]
     fn zero<CS: ConstraintSystem<F>>(_cs: CS) -> Self {
         let value = Some(F::zero());
-        AllocatedFp {
-            value,
-            variable: ConstraintVariable::zero(),
-        }
+        AllocatedFp { value, variable: ConstraintVariable::zero() }
     }
 
     #[inline]
     fn one<CS: ConstraintSystem<F>>(_cs: CS) -> Self {
         let value = Some(F::one());
-        AllocatedFp {
-            value,
-            variable: CS::one().into(),
-        }
+        AllocatedFp { value, variable: CS::one().into() }
     }
 
     #[inline]
@@ -124,10 +116,7 @@ impl<F: PrimeField> AllocatedFp<F> {
             (Some(v), Some(b)) => Some(if b { v + coeff } else { v }),
             (..) => None,
         };
-        AllocatedFp {
-            value,
-            variable: LC(bit.lc(CS::one(), coeff)) + &self.variable,
-        }
+        AllocatedFp { value, variable: LC(bit.lc(CS::one(), coeff)) + &self.variable }
     }
 
     #[inline]
@@ -137,10 +126,7 @@ impl<F: PrimeField> AllocatedFp<F> {
             (..) => None,
         };
 
-        AllocatedFp {
-            value,
-            variable: &self.variable + &other.variable,
-        }
+        AllocatedFp { value, variable: &self.variable + &other.variable }
     }
 
     fn double<CS: ConstraintSystem<F>>(&self, _cs: CS) -> Self {
@@ -166,10 +152,7 @@ impl<F: PrimeField> AllocatedFp<F> {
             (..) => None,
         };
 
-        AllocatedFp {
-            value,
-            variable: &self.variable - &other.variable,
-        }
+        AllocatedFp { value, variable: &self.variable - &other.variable }
     }
 
     #[inline]
@@ -203,10 +186,7 @@ impl<F: PrimeField> AllocatedFp<F> {
     #[inline]
     fn add_constant<CS: ConstraintSystem<F>>(&self, _cs: CS, other: &F) -> Self {
         let value = self.value.map(|val| val + other);
-        AllocatedFp {
-            value,
-            variable: self.variable.clone() + (*other, CS::one()),
-        }
+        AllocatedFp { value, variable: self.variable.clone() + (*other, CS::one()) }
     }
 
     #[inline]
@@ -251,12 +231,7 @@ impl<F: PrimeField> AllocatedFp<F> {
         })?;
 
         let one = CS::one();
-        cs.enforce(
-            || "inv_constraint",
-            |lc| &self.variable + lc,
-            |lc| &inverse.variable + lc,
-            |lc| lc + one,
-        );
+        cs.enforce(|| "inv_constraint", |lc| &self.variable + lc, |lc| &inverse.variable + lc, |lc| lc + one);
         Ok(inverse)
     }
 
@@ -279,21 +254,15 @@ impl<F: PrimeField> AllocatedFp<F> {
     }
 
     fn square_equals<CS: ConstraintSystem<F>>(&self, mut cs: CS, result: &Self) {
-        cs.enforce(
-            || "sqr_constraint",
-            |lc| &self.variable + lc,
-            |lc| &self.variable + lc,
-            |lc| &result.variable + lc,
-        );
+        cs.enforce(|| "sqr_constraint", |lc| &self.variable + lc, |lc| &self.variable + lc, |lc| &result.variable + lc);
     }
 
     /// Outputs the bit `self != other`.
     ///
     /// This requires three constraints.
     pub fn is_neq<CS: ConstraintSystem<F>>(&self, mut cs: CS, other: &Self) -> Result<Boolean, SynthesisError> {
-        let is_not_equal = Boolean::alloc(cs.ns(|| "alloc_is_not_equal"), || {
-            Ok(self.value.get()? != other.value.get()?)
-        })?;
+        let is_not_equal =
+            Boolean::alloc(cs.ns(|| "alloc_is_not_equal"), || Ok(self.value.get()? != other.value.get()?))?;
         let multiplier = cs.alloc(
             || "muliplier",
             || {
@@ -539,10 +508,7 @@ impl<F: PrimeField> ToBitsLEGadget<F> for AllocatedFp<F> {
 impl<F: PrimeField> ToBytesGadget<F> for AllocatedFp<F> {
     fn to_bytes<CS: ConstraintSystem<F>>(&self, mut cs: CS) -> Result<Vec<UInt8>, SynthesisError> {
         let byte_values = match self.value {
-            Some(value) => to_bytes_le![&value.to_repr()]?
-                .into_iter()
-                .map(Some)
-                .collect::<Vec<_>>(),
+            Some(value) => to_bytes_le![&value.to_repr()]?.into_iter().map(Some).collect::<Vec<_>>(),
             None => {
                 let default = F::default();
                 let default_len = to_bytes_le![&default].unwrap().len();
@@ -600,9 +566,7 @@ impl<F: PrimeField> CondSelectGadget<F> for AllocatedFp<F> {
             if cond { Ok(first.clone()) } else { Ok(second.clone()) }
         } else {
             let result = Self::alloc(cs.ns(|| ""), || {
-                cond.get_value()
-                    .and_then(|cond| if cond { first } else { second }.get_value())
-                    .get()
+                cond.get_value().and_then(|cond| if cond { first } else { second }.get_value()).get()
             })?;
             // a = self; b = other; c = cond;
             //
@@ -690,11 +654,25 @@ impl<F: PrimeField> ThreeBitCondNegLookupGadget<F> for AllocatedFp<F> {
             + b[0].lc(one, c[1] - c[0])
             + b[1].lc(one, c[2] - c[0])
             + (c[0], one);
+
+        // Conditional negation:
+        // We want to set the result to be a conditional negation of y_lc as follows:
+        // if b[2] == 0, result := y_lc
+        // if b[2] == 1, result := -y_lc
+        //
+        // We write this as follows:
+        // result = (b[2] - 1/2) * (-2 * y_lc);
+        //
+        // This works because
+        // * b[2] == 0 -> result = -1/2 * -2 * y_lc =  y_lc
+        // * b[2] == 1 -> result =  1/2 * -2 * y_lc = -y_lc
+        // We take this approach because it reduces the number of non-zero entries in
+        // the constraint, which makes it more efficient for Marlin.
         cs.enforce(
             || "Enforce lookup",
-            |_| y_lc.clone() + y_lc.clone(),
-            |lc| lc + b[2].lc(one, F::one()),
-            |_| -result.get_variable() + y_lc.clone(),
+            |_| b[2].lc(one, F::one()) + &LinearCombination::from((-F::half(), one)),
+            |_| -(y_lc.clone() + y_lc.clone()),
+            |lc| result.get_variable() + lc,
         );
 
         Ok(result)
@@ -707,10 +685,7 @@ impl<F: PrimeField> ThreeBitCondNegLookupGadget<F> for AllocatedFp<F> {
 
 impl<F: PrimeField> Clone for AllocatedFp<F> {
     fn clone(&self) -> Self {
-        Self {
-            value: self.value,
-            variable: self.variable.clone(),
-        }
+        Self { value: self.value, variable: self.variable.clone() }
     }
 }
 
@@ -723,10 +698,7 @@ impl<F: PrimeField> AllocGadget<F, F> for AllocatedFp<F> {
     {
         let value = *value_gen()?.borrow();
         let variable = ConstraintVariable::from((value, CS::one()));
-        Ok(Self {
-            value: Some(value),
-            variable,
-        })
+        Ok(Self { value: Some(value), variable })
     }
 
     #[inline]
@@ -744,10 +716,7 @@ impl<F: PrimeField> AllocGadget<F, F> for AllocatedFp<F> {
                 Ok(tmp)
             },
         )?;
-        Ok(AllocatedFp {
-            value,
-            variable: Var(variable),
-        })
+        Ok(AllocatedFp { value, variable: Var(variable) })
     }
 
     #[inline]
@@ -765,10 +734,7 @@ impl<F: PrimeField> AllocGadget<F, F> for AllocatedFp<F> {
                 Ok(tmp)
             },
         )?;
-        Ok(AllocatedFp {
-            value,
-            variable: Var(variable),
-        })
+        Ok(AllocatedFp { value, variable: Var(variable) })
     }
 }
 
@@ -858,7 +824,7 @@ impl<F: PrimeField> FieldGadget<F, F> for FpGadget<F> {
         match (self, other) {
             (Self::Constant(c1), Self::Constant(c2)) => Ok(Self::Constant(*c1 + *c2)),
             (Self::Constant(c), Self::Variable(v)) | (Self::Variable(v), Self::Constant(c)) => {
-                Ok(Self::Variable(v.add_constant(cs, &*c)))
+                Ok(Self::Variable(v.add_constant(cs, c)))
             }
             (Self::Variable(v1), Self::Variable(v2)) => Ok(Self::Variable(v1.add(cs, v2))),
         }
@@ -888,10 +854,10 @@ impl<F: PrimeField> FieldGadget<F, F> for FpGadget<F> {
     fn sub<CS: ConstraintSystem<F>>(&self, mut cs: CS, other: &Self) -> Result<Self, SynthesisError> {
         match (self, other) {
             (Self::Constant(c1), Self::Constant(c2)) => Ok(Self::Constant(*c1 - *c2)),
-            (Self::Variable(v), Self::Constant(c)) => Ok(Self::Variable(v.sub_constant(cs.ns(|| "sub_constant"), &*c))),
-            (Self::Constant(c), Self::Variable(v)) => Ok(Self::Variable(
-                v.sub_constant(cs.ns(|| "sub_constant"), &*c).negate(cs.ns(|| "negate")),
-            )),
+            (Self::Variable(v), Self::Constant(c)) => Ok(Self::Variable(v.sub_constant(cs.ns(|| "sub_constant"), c))),
+            (Self::Constant(c), Self::Variable(v)) => {
+                Ok(Self::Variable(v.sub_constant(cs.ns(|| "sub_constant"), c).negate(cs.ns(|| "negate"))))
+            }
             (Self::Variable(v1), Self::Variable(v2)) => Ok(Self::Variable(v1.sub(cs.ns(|| "sub"), v2))),
         }
     }
@@ -923,7 +889,7 @@ impl<F: PrimeField> FieldGadget<F, F> for FpGadget<F> {
         match (self, other) {
             (Self::Constant(c1), Self::Constant(c2)) => Ok(Self::Constant(*c1 * *c2)),
             (Self::Variable(v), Self::Constant(c)) | (Self::Constant(c), Self::Variable(v)) => {
-                Ok(Self::Variable(v.mul_by_constant(cs.ns(|| "mul_by_constant"), &*c)))
+                Ok(Self::Variable(v.mul_by_constant(cs.ns(|| "mul_by_constant"), c)))
             }
             (Self::Variable(v1), Self::Variable(v2)) => Ok(Self::Variable(v1.mul(cs.ns(|| "mul"), v2)?)),
         }
@@ -1193,11 +1159,8 @@ impl<F: PrimeField> CondSelectGadget<F> for FpGadget<F> {
                         let is = AllocatedFp::from_boolean(cs.ns(|| "from_bool_is"), *cond)?;
                         let not = AllocatedFp::from_boolean(cs.ns(|| "from_bool_not"), cond.not())?;
                         // cond * t + (1 - cond) * f
-                        let not_f = &not.mul_by_constant(cs.ns(|| "mul_by_f"), &*f);
-                        Ok(is
-                            .mul_by_constant(cs.ns(|| "mul_by_t"), &*t)
-                            .add(cs.ns(|| "add"), not_f)
-                            .into())
+                        let not_f = &not.mul_by_constant(cs.ns(|| "mul_by_f"), f);
+                        Ok(is.mul_by_constant(cs.ns(|| "mul_by_t"), t).add(cs.ns(|| "add"), not_f).into())
                     }
                     (..) => {
                         let first = match first {

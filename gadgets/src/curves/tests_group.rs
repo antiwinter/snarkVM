@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -15,12 +15,12 @@
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::traits::GroupGadget;
-use snarkvm_curves::traits::Group;
+use snarkvm_curves::traits::AffineCurve;
 use snarkvm_fields::Field;
 use snarkvm_r1cs::ConstraintSystem;
 
 #[allow(clippy::eq_op)]
-pub fn group_test<F: Field, G: Group, GG: GroupGadget<G, F>, CS: ConstraintSystem<F>>(cs: &mut CS, a: GG, b: GG) {
+pub fn group_test<F: Field, G: AffineCurve, GG: GroupGadget<G, F>, CS: ConstraintSystem<F>>(cs: &mut CS, a: GG, b: GG) {
     let zero = GG::zero(cs.ns(|| "Zero")).unwrap();
     assert!(zero == zero);
 

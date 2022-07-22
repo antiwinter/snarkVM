@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -17,12 +17,13 @@
 #![allow(clippy::module_inception)]
 #![allow(clippy::type_complexity)]
 
+#[cfg(feature = "wasm")]
 #[macro_use]
-extern crate derivative;
+extern crate alloc;
 
+#[allow(unused_imports)]
 #[macro_use]
-extern crate snarkvm_profiler;
-
+extern crate aleo_std;
 #[macro_use]
 extern crate thiserror;
 
@@ -46,14 +47,14 @@ pub use errors::*;
 #[cfg(feature = "fft")]
 pub mod fft;
 
-#[cfg(feature = "hash_to_curve")]
-pub mod hash_to_curve;
-
 #[cfg(feature = "merkle_tree")]
 pub mod merkle_tree;
 
 #[cfg(feature = "msm")]
 pub mod msm;
+
+#[cfg(feature = "polycommit")]
+pub mod polycommit;
 
 #[cfg(feature = "prf")]
 pub mod prf;

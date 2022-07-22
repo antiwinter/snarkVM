@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -17,8 +17,6 @@
 pub mod bls12_377;
 
 pub mod edwards_bls12;
-
-pub mod edwards_bw6;
 
 #[cfg(test)]
 pub mod tests_curve;

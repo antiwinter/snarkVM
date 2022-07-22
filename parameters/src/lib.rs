@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -33,6 +33,8 @@ pub use errors::*;
 pub mod testnet1;
 
 pub mod testnet2;
+
+pub mod testnet3;
 
 pub mod traits;
 pub use traits::*;

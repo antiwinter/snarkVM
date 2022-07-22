@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -20,10 +20,10 @@ use snarkvm_curves::{
     traits::{AffineCurve, ProjectiveCurve},
 };
 use snarkvm_fields::{PrimeField, Zero};
-use snarkvm_utilities::{rand::UniformRand, BitIteratorBE};
-
-use rand::SeedableRng;
-use rand_xorshift::XorShiftRng;
+use snarkvm_utilities::{
+    rand::{test_rng, Uniform},
+    BitIteratorBE,
+};
 
 fn naive_variable_base_msm<G: AffineCurve>(
     bases: &[G],
@@ -41,34 +41,28 @@ fn naive_variable_base_msm<G: AffineCurve>(
 fn variable_base_test_with_bls12() {
     const SAMPLES: usize = 1 << 10;
 
-    let mut rng = XorShiftRng::seed_from_u64(234872845u64);
+    let mut rng = test_rng();
 
     let v = (0..SAMPLES).map(|_| Fr::rand(&mut rng).to_repr()).collect::<Vec<_>>();
-    let g = (0..SAMPLES)
-        .map(|_| G1Projective::rand(&mut rng).into_affine())
-        .collect::<Vec<_>>();
+    let g = (0..SAMPLES).map(|_| G1Projective::rand(&mut rng).to_affine()).collect::<Vec<_>>();
 
     let naive = naive_variable_base_msm(g.as_slice(), v.as_slice());
-    let fast = VariableBaseMSM::multi_scalar_mul(g.as_slice(), v.as_slice());
+    let fast = VariableBase::msm(g.as_slice(), v.as_slice());
 
-    assert_eq!(naive.into_affine(), fast.into_affine());
+    assert_eq!(naive.to_affine(), fast.to_affine());
 }
 
 #[test]
 fn variable_base_test_with_bls12_unequal_numbers() {
     const SAMPLES: usize = 1 << 10;
 
-    let mut rng = XorShiftRng::seed_from_u64(234872845u64);
+    let mut rng = test_rng();
 
-    let v = (0..SAMPLES - 1)
-        .map(|_| Fr::rand(&mut rng).to_repr())
-        .collect::<Vec<_>>();
-    let g = (0..SAMPLES)
-        .map(|_| G1Projective::rand(&mut rng).into_affine())
-        .collect::<Vec<_>>();
+    let v = (0..SAMPLES - 1).map(|_| Fr::rand(&mut rng).to_repr()).collect::<Vec<_>>();
+    let g = (0..SAMPLES).map(|_| G1Projective::rand(&mut rng).to_affine()).collect::<Vec<_>>();
 
     let naive = naive_variable_base_msm(g.as_slice(), v.as_slice());
-    let fast = VariableBaseMSM::multi_scalar_mul(g.as_slice(), v.as_slice());
+    let fast = VariableBase::msm(g.as_slice(), v.as_slice());
 
-    assert_eq!(naive.into_affine(), fast.into_affine());
+    assert_eq!(naive.to_affine(), fast.to_affine());
 }

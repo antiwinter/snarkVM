@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -14,48 +14,26 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::{
-    crypto_hash::{PoseidonCryptoHash, PoseidonDefaultParametersField},
-    errors::PRFError,
-    traits::{CryptoHash, PRF},
-};
+use crate::{crypto_hash::Poseidon, PRF};
 use snarkvm_fields::PrimeField;
 
 use std::marker::PhantomData;
 
 #[derive(Clone)]
-pub struct PoseidonPRF<
-    F: PrimeField + PoseidonDefaultParametersField,
-    const RATE: usize,
-    const OPTIMIZED_FOR_WEIGHTS: bool,
->(PhantomData<F>);
+pub struct PoseidonPRF<F: PrimeField, const RATE: usize>(PhantomData<F>);
 
-impl<F: PrimeField + PoseidonDefaultParametersField, const RATE: usize, const OPTIMIZED_FOR_WEIGHTS: bool> PRF
-    for PoseidonPRF<F, RATE, OPTIMIZED_FOR_WEIGHTS>
-{
+impl<F: PrimeField, const RATE: usize> PRF for PoseidonPRF<F, RATE> {
     type Input = Vec<F>;
     type Output = F;
     type Seed = F;
 
-    fn evaluate(seed: &Self::Seed, input: &Self::Input) -> Result<Self::Output, PRFError> {
-        let timer = start_timer!(|| "PoseidonPRF::evaluate");
-
-        // Construct the input length as a field element.
-        let input_length = {
-            let mut buffer = input.len().to_le_bytes().to_vec();
-            buffer.resize((F::size_in_bits() + 7) / 8, 0u8);
-            F::from_bytes_le(&buffer)?
-        };
-
+    fn prf(seed: &Self::Seed, input: &Self::Input) -> Self::Output {
         // Construct the preimage.
         let mut preimage = vec![*seed];
-        preimage.push(input_length);
+        preimage.push(F::from(input.len() as u128)); // Input length
         preimage.extend_from_slice(input);
 
         // Evaluate the preimage.
-        let output = PoseidonCryptoHash::<F, RATE, OPTIMIZED_FOR_WEIGHTS>::setup().evaluate(preimage.as_slice());
-
-        end_timer!(timer);
-        Ok(output)
+        Poseidon::<F, RATE>::setup().evaluate(&preimage)
     }
 }

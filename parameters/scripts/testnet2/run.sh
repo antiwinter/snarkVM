@@ -1,8 +1,6 @@
-# These are dependent on each other.
-./universal.sh || exit
-./noop.sh || exit
-./inner.sh || exit
-./outer.sh || exit
+./input.sh || exit
+
+./output.sh || exit
 
 ./posw.sh || exit
 

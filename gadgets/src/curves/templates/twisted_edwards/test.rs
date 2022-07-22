@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -19,13 +19,10 @@ use crate::{
     curves::tests_group::group_test,
     traits::{alloc::AllocGadget, curves::GroupGadget, select::CondSelectGadget},
 };
-use snarkvm_curves::{
-    templates::twisted_edwards_extended::Affine as TEAffine,
-    traits::{Group, TwistedEdwardsParameters},
-};
+use snarkvm_curves::{templates::twisted_edwards_extended::Affine as TEAffine, AffineCurve, TwistedEdwardsParameters};
 use snarkvm_fields::{Field, PrimeField};
 use snarkvm_r1cs::ConstraintSystem;
-use snarkvm_utilities::{bititerator::BitIteratorBE, rand::UniformRand};
+use snarkvm_utilities::{bititerator::BitIteratorBE, rand::Uniform};
 
 use core::ops::Mul;
 use rand::thread_rng;
@@ -37,8 +34,8 @@ where
     GG: GroupGadget<TEAffine<P>, F, Value = TEAffine<P>>,
     CS: ConstraintSystem<F>,
 {
-    let a: TEAffine<P> = UniformRand::rand(&mut thread_rng());
-    let b: TEAffine<P> = UniformRand::rand(&mut thread_rng());
+    let a: TEAffine<P> = Uniform::rand(&mut thread_rng());
+    let b: TEAffine<P> = Uniform::rand(&mut thread_rng());
     let gadget_a = GG::alloc(&mut cs.ns(|| "a"), || Ok(a)).unwrap();
     let gadget_b = GG::alloc(&mut cs.ns(|| "b"), || Ok(b)).unwrap();
     assert_eq!(gadget_a.get_value().unwrap(), a);
@@ -46,7 +43,7 @@ where
     group_test::<F, TEAffine<P>, GG, _>(&mut cs.ns(|| "GroupTest(a, b)"), gadget_a.clone(), gadget_b);
 
     // Check mul_bits
-    let scalar: <TEAffine<P> as Group>::ScalarField = UniformRand::rand(&mut thread_rng());
+    let scalar: <TEAffine<P> as AffineCurve>::ScalarField = Uniform::rand(&mut thread_rng());
     let native_result = a.mul(scalar);
 
     let mut scalar: Vec<bool> = BitIteratorBE::new(scalar.to_repr()).collect();
@@ -54,9 +51,7 @@ where
     scalar.reverse();
     let input = Vec::<Boolean>::alloc(cs.ns(|| "Input"), || Ok(scalar)).unwrap();
     let zero = GG::zero(cs.ns(|| "zero")).unwrap();
-    let result = gadget_a
-        .mul_bits(cs.ns(|| "mul_bits"), &zero, input.into_iter())
-        .unwrap();
+    let result = gadget_a.mul_bits(cs.ns(|| "mul_bits"), &zero, input.into_iter()).unwrap();
     let gadget_value = result.get_value().expect("Gadget_result failed");
     assert_eq!(native_result, gadget_value);
 }

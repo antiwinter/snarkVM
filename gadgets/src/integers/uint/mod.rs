@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -31,9 +31,6 @@ pub use relational::*;
 
 pub mod uint_impl;
 pub use uint_impl::*;
-
-pub mod uint128;
-pub use uint128::*;
 
 #[cfg(test)]
 mod tests;

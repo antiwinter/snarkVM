@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -18,18 +18,20 @@ use crate::{
     errors::MerkleError,
     traits::{MerkleParameters, CRH},
 };
-use snarkvm_utilities::{FromBytes, ToBytes};
+use snarkvm_utilities::{error, FromBytes, FromBytesDeserializer, ToBytes, ToBytesSerializer};
 
+use anyhow::Result;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     io::{Read, Result as IoResult, Write},
     sync::Arc,
 };
 
-pub type MerkleTreeDigest<P> = <<P as MerkleParameters>::H as CRH>::Output;
+pub type MerkleTreeDigest<P> = <<P as MerkleParameters>::TwoToOneCRH as CRH>::Output;
 
 /// Stores the hashes of a particular path (in order) from leaf to root.
 /// Our path `is_left_child()` if the boolean in `path` is true.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MerklePath<P: MerkleParameters> {
     pub parameters: Arc<P>,
     pub path: Vec<MerkleTreeDigest<P>>,
@@ -37,9 +39,14 @@ pub struct MerklePath<P: MerkleParameters> {
 }
 
 impl<P: MerkleParameters> MerklePath<P> {
+    /// Returns a new instance of a Merkle path.
+    pub fn from(parameters: Arc<P>, path: Vec<MerkleTreeDigest<P>>, leaf_index: u64) -> Result<Self> {
+        Ok(Self { parameters, path, leaf_index })
+    }
+
     pub fn verify<L: ToBytes>(&self, root_hash: &MerkleTreeDigest<P>, leaf: &L) -> Result<bool, MerkleError> {
         // Check that the given leaf matches the leaf in the membership proof.
-        if !self.path.is_empty() {
+        if self.path.len() == P::DEPTH {
             let claimed_leaf_hash = self.parameters.hash_leaf::<L>(leaf)?;
 
             let mut index = self.leaf_index;
@@ -75,9 +82,9 @@ impl<P: MerkleParameters> MerklePath<P> {
     /// Returns: (left, right)
     fn select_left_right_bytes(
         index: u64,
-        computed_hash: &<P::H as CRH>::Output,
-        sibling_hash: &<P::H as CRH>::Output,
-    ) -> Result<(<P::H as CRH>::Output, <P::H as CRH>::Output), MerkleError> {
+        computed_hash: &<P::TwoToOneCRH as CRH>::Output,
+        sibling_hash: &<P::TwoToOneCRH as CRH>::Output,
+    ) -> Result<(<P::TwoToOneCRH as CRH>::Output, <P::TwoToOneCRH as CRH>::Output), MerkleError> {
         let is_left = index & 1 == 0;
         let mut left_bytes = computed_hash;
         let mut right_bytes = sibling_hash;
@@ -96,6 +103,17 @@ impl<P: MerkleParameters> MerklePath<P> {
     }
 }
 
+// TODO (howardwu): TEMPORARY - Deprecate this with a ledger rearchitecture.
+impl<P: MerkleParameters> Default for MerklePath<P> {
+    fn default() -> Self {
+        let mut path = Vec::with_capacity(P::DEPTH);
+        for _i in 0..P::DEPTH {
+            path.push(MerkleTreeDigest::<P>::default());
+        }
+        Self { parameters: Arc::new(P::setup("unsafe")), path, leaf_index: 0 }
+    }
+}
+
 impl<P: MerkleParameters> FromBytes for MerklePath<P> {
     #[inline]
     fn read_le<R: Read>(mut reader: R) -> IoResult<Self> {
@@ -106,17 +124,20 @@ impl<P: MerkleParameters> FromBytes for MerklePath<P> {
         //  is being introduced until a proper refactor can be discussed and implemented.
         //  If you are seeing this message, please be proactive in bringing it up :)
         let parameters = {
-            let setup_message_length: u64 = FromBytes::read_le(&mut reader)?;
+            // Decode the setup message size.
+            let setup_message_length = u16::read_le(&mut reader)?;
 
             let mut setup_message_bytes = vec![0u8; setup_message_length as usize];
             reader.read_exact(&mut setup_message_bytes)?;
-            let setup_message =
-                String::from_utf8(setup_message_bytes).expect("Failed to parse setup message for Merkle parameters");
+            let setup_message = String::from_utf8(setup_message_bytes)
+                .map_err(|_| error("Failed to parse setup message for Merkle parameters"))?;
 
             Arc::new(P::setup(&setup_message))
         };
 
-        let path_length: u64 = FromBytes::read_le(&mut reader)?;
+        // Decode the Merkle path depth.
+        let path_length: u8 = FromBytes::read_le(&mut reader)?;
+
         let mut path = Vec::with_capacity(path_length as usize);
         for _ in 0..path_length {
             path.push(FromBytes::read_le(&mut reader)?);
@@ -124,11 +145,7 @@ impl<P: MerkleParameters> FromBytes for MerklePath<P> {
 
         let leaf_index: u64 = FromBytes::read_le(&mut reader)?;
 
-        Ok(Self {
-            parameters,
-            path,
-            leaf_index,
-        })
+        Ok(Self { parameters, path, leaf_index })
     }
 }
 
@@ -136,29 +153,37 @@ impl<P: MerkleParameters> ToBytes for MerklePath<P> {
     #[inline]
     fn write_le<W: Write>(&self, mut writer: W) -> IoResult<()> {
         let setup_message_bytes: &[u8] = self.parameters.setup_message().as_bytes();
-        let setup_message_length: u64 = setup_message_bytes.len() as u64;
 
-        setup_message_length.write_le(&mut writer)?;
+        // Ensure the setup message size is within bounds.
+        if setup_message_bytes.len() > (u16::MAX as usize) {
+            return Err(error(format!("Merkle path setup message cannot exceed {} bytes", u16::MAX)));
+        }
+
+        // Encode the setup message.
+        (setup_message_bytes.len() as u16).write_le(&mut writer)?;
         setup_message_bytes.write_le(&mut writer)?;
 
-        (self.path.len() as u64).write_le(&mut writer)?;
+        // Ensure the Merkle path length is within bounds.
+        if self.path.len() > (u8::MAX as usize) {
+            return Err(error(format!("Merkle path depth cannot exceed {}", u8::MAX)));
+        }
+
+        // Encode the Merkle path.
+        (self.path.len() as u8).write_le(&mut writer)?;
         self.path.write_le(&mut writer)?;
 
         self.leaf_index.write_le(&mut writer)
     }
 }
 
-// TODO (howardwu): TEMPORARY - Deprecate this with a ledger rearchitecture.
-impl<P: MerkleParameters> Default for MerklePath<P> {
-    fn default() -> Self {
-        let mut path = Vec::with_capacity(P::DEPTH);
-        for _i in 0..P::DEPTH {
-            path.push(MerkleTreeDigest::<P>::default());
-        }
-        Self {
-            parameters: Arc::new(P::setup("unsafe")),
-            path,
-            leaf_index: 0,
-        }
+impl<P: MerkleParameters> Serialize for MerklePath<P> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        ToBytesSerializer::serialize_with_size_encoding(self, serializer)
+    }
+}
+
+impl<'de, P: MerkleParameters> Deserialize<'de> for MerklePath<P> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        FromBytesDeserializer::<Self>::deserialize_with_size_encoding(deserializer, "Merkle path")
     }
 }

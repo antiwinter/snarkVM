@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
-static const uint32_t WINDOW_SIZE = 512;
+static const uint32_t WINDOW_SIZE = 128;
 // static const uint32_t BLST_WIDTH = 253;
 
 extern "C" __global__ void msm6_pixel(blst_p1* bucket_lists, const blst_p1_affine* bases_in, const blst_scalar* scalars, const uint32_t* window_lengths, const uint32_t window_count) {

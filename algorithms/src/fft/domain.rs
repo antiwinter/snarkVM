@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Aleo Systems Inc.
+// Copyright (C) 2019-2022 Aleo Systems Inc.
 // This file is part of the snarkVM library.
 
 // The snarkVM library is free software: you can redistribute it and/or modify
@@ -36,13 +36,16 @@ use crate::{
 use snarkvm_fields::{batch_inversion, FftField, FftParameters, Field};
 #[cfg(feature = "parallel")]
 use snarkvm_utilities::max_available_threads;
-use snarkvm_utilities::{errors::SerializationError, execute_with_max_available_threads, serialize::*};
+use snarkvm_utilities::{execute_with_max_available_threads, serialize::*};
 
 use rand::Rng;
-use std::fmt;
+use std::{borrow::Cow, fmt};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+
+#[cfg(not(feature = "parallel"))]
+use itertools::Itertools;
 
 /// Returns the ceiling of the base-2 logarithm of `x`.
 ///
@@ -146,11 +149,7 @@ impl<F: FftField> EvaluationDomain<F> {
     /// having `num_coeffs` coefficients.
     pub fn compute_size_of_domain(num_coeffs: usize) -> Option<usize> {
         let size = num_coeffs.next_power_of_two();
-        if size.trailing_zeros() <= F::FftParameters::TWO_ADICITY {
-            Some(size)
-        } else {
-            None
-        }
+        if size.trailing_zeros() <= F::FftParameters::TWO_ADICITY { Some(size) } else { None }
     }
 
     /// Return the size of `self`.
@@ -243,16 +242,14 @@ impl<F: FftField> EvaluationDomain<F> {
         let num_cpus_available = max_available_threads();
         let num_elem_per_thread = core::cmp::max(coeffs.len() / num_cpus_available, min_parallel_chunk_size);
 
-        cfg_chunks_mut!(coeffs, num_elem_per_thread)
-            .enumerate()
-            .for_each(|(i, chunk)| {
-                let offset = c * g.pow([(i * num_elem_per_thread) as u64]);
-                let mut pow = offset;
-                chunk.iter_mut().for_each(|coeff| {
-                    *coeff *= pow;
-                    pow *= &g
-                })
-            });
+        cfg_chunks_mut!(coeffs, num_elem_per_thread).enumerate().for_each(|(i, chunk)| {
+            let offset = c * g.pow([(i * num_elem_per_thread) as u64]);
+            let mut pow = offset;
+            chunk.iter_mut().for_each(|coeff| {
+                *coeff *= pow;
+                pow *= &g
+            })
+        });
     }
 
     /// Evaluate all the lagrange polynomials defined by this domain at the point
@@ -286,7 +283,7 @@ impl<F: FftField> EvaluationDomain<F> {
             }
 
             batch_inversion(u.as_mut_slice());
-            cfg_iter_mut!(u).zip(ls).for_each(|(tau_minus_r, l)| {
+            cfg_iter_mut!(u).zip_eq(ls).for_each(|(tau_minus_r, l)| {
                 *tau_minus_r = l * *tau_minus_r;
             });
             u
@@ -295,8 +292,8 @@ impl<F: FftField> EvaluationDomain<F> {
 
     /// Return the sparse vanishing polynomial.
     pub fn vanishing_polynomial(&self) -> SparsePolynomial<F> {
-        let coeffs = vec![(0, -F::one()), (self.size(), F::one())];
-        SparsePolynomial::from_coefficients_vec(coeffs)
+        let coeffs = [(0, -F::one()), (self.size(), F::one())];
+        SparsePolynomial::from_coefficients(coeffs)
     }
 
     /// This evaluates the vanishing polynomial for this domain at tau.
@@ -307,21 +304,14 @@ impl<F: FftField> EvaluationDomain<F> {
 
     /// Return an iterator over the elements of the domain.
     pub fn elements(&self) -> Elements<F> {
-        Elements {
-            cur_elem: F::one(),
-            cur_pow: 0,
-            domain: *self,
-        }
+        Elements { cur_elem: F::one(), cur_pow: 0, domain: *self }
     }
 
     /// The target polynomial is the zero polynomial in our
     /// evaluation domain, so we must perform division over
     /// a coset.
     pub fn divide_by_vanishing_poly_on_coset_in_place(&self, evals: &mut [F]) {
-        let i = self
-            .evaluate_vanishing_polynomial(F::multiplicative_generator())
-            .inverse()
-            .unwrap();
+        let i = self.evaluate_vanishing_polynomial(F::multiplicative_generator()).inverse().unwrap();
 
         cfg_iter_mut!(evals).for_each(|eval| *eval *= &i);
     }
@@ -329,7 +319,7 @@ impl<F: FftField> EvaluationDomain<F> {
     /// Given an index which assumes the first elements of this domain are the elements of
     /// another (sub)domain with size size_s,
     /// this returns the actual index into this domain.
-    pub fn reindex_by_subdomain(&self, other: Self, index: usize) -> usize {
+    pub fn reindex_by_subdomain(&self, other: &Self, index: usize) -> usize {
         assert!(self.size() >= other.size());
         // Let this subgroup be G, and the subgroup we're re-indexing by be S.
         // Since its a subgroup, the 0th element of S is at index 0 in G, the first element of S is at
@@ -357,63 +347,137 @@ impl<F: FftField> EvaluationDomain<F> {
     /// Returns the evaluations of the product over the domain.
     #[must_use]
     pub fn mul_polynomials_in_evaluation_domain(&self, self_evals: &[F], other_evals: &[F]) -> Vec<F> {
-        assert_eq!(self_evals.len(), other_evals.len());
-
         let mut result = self_evals.to_vec();
-        cfg_iter_mut!(result).zip(other_evals).for_each(|(a, b)| *a *= b);
+
+        cfg_iter_mut!(result).zip_eq(other_evals).for_each(|(a, b)| *a *= b);
 
         result
     }
 }
 
 impl<F: FftField> EvaluationDomain<F> {
+    pub fn precompute_fft(&self) -> FFTPrecomputation<F> {
+        execute_with_max_available_threads(|| FFTPrecomputation {
+            roots: self.roots_of_unity(self.group_gen),
+            domain: *self,
+        })
+    }
+
+    pub fn precompute_ifft(&self) -> IFFTPrecomputation<F> {
+        execute_with_max_available_threads(|| IFFTPrecomputation {
+            inverse_roots: self.roots_of_unity(self.group_gen_inv),
+            domain: *self,
+        })
+    }
+
     pub(crate) fn in_order_fft_in_place<T: DomainCoeff<F>>(&self, x_s: &mut [T]) {
-        self.fft_helper_in_place(x_s, FFTOrder::II)
+        let pc = self.precompute_fft();
+        self.fft_helper_in_place_with_pc(x_s, FFTOrder::II, &pc)
     }
 
     pub(crate) fn in_order_ifft_in_place<T: DomainCoeff<F>>(&self, x_s: &mut [T]) {
-        self.ifft_helper_in_place(x_s, FFTOrder::II);
+        let pc = self.precompute_ifft();
+        self.ifft_helper_in_place_with_pc(x_s, FFTOrder::II, &pc);
         cfg_iter_mut!(x_s).for_each(|val| *val *= self.size_inv);
     }
 
     pub(crate) fn in_order_coset_ifft_in_place<T: DomainCoeff<F>>(&self, x_s: &mut [T]) {
-        self.ifft_helper_in_place(x_s, FFTOrder::II);
+        let pc = self.precompute_ifft();
+        self.ifft_helper_in_place_with_pc(x_s, FFTOrder::II, &pc);
         let coset_shift = self.generator_inv;
         Self::distribute_powers_and_mul_by_const(x_s, coset_shift, self.size_inv);
     }
 
-    fn fft_helper_in_place<T: DomainCoeff<F>>(&self, x_s: &mut [T], ord: FFTOrder) {
+    #[allow(unused)]
+    pub(crate) fn in_order_fft_in_place_with_pc<T: DomainCoeff<F>>(
+        &self,
+        x_s: &mut [T],
+        pre_comp: &FFTPrecomputation<F>,
+    ) {
+        self.fft_helper_in_place_with_pc(x_s, FFTOrder::II, pre_comp)
+    }
+
+    pub(crate) fn out_order_fft_in_place_with_pc<T: DomainCoeff<F>>(
+        &self,
+        x_s: &mut [T],
+        pre_comp: &FFTPrecomputation<F>,
+    ) {
+        self.fft_helper_in_place_with_pc(x_s, FFTOrder::IO, pre_comp)
+    }
+
+    pub(crate) fn in_order_ifft_in_place_with_pc<T: DomainCoeff<F>>(
+        &self,
+        x_s: &mut [T],
+        pre_comp: &IFFTPrecomputation<F>,
+    ) {
+        self.ifft_helper_in_place_with_pc(x_s, FFTOrder::II, pre_comp);
+        cfg_iter_mut!(x_s).for_each(|val| *val *= self.size_inv);
+    }
+
+    pub(crate) fn out_order_ifft_in_place_with_pc<T: DomainCoeff<F>>(
+        &self,
+        x_s: &mut [T],
+        pre_comp: &IFFTPrecomputation<F>,
+    ) {
+        self.ifft_helper_in_place_with_pc(x_s, FFTOrder::OI, pre_comp);
+        cfg_iter_mut!(x_s).for_each(|val| *val *= self.size_inv);
+    }
+
+    #[allow(unused)]
+    pub(crate) fn in_order_coset_ifft_in_place_with_pc<T: DomainCoeff<F>>(
+        &self,
+        x_s: &mut [T],
+        pre_comp: &IFFTPrecomputation<F>,
+    ) {
+        self.ifft_helper_in_place_with_pc(x_s, FFTOrder::II, pre_comp);
+        let coset_shift = self.generator_inv;
+        Self::distribute_powers_and_mul_by_const(x_s, coset_shift, self.size_inv);
+    }
+
+    fn fft_helper_in_place_with_pc<T: DomainCoeff<F>>(
+        &self,
+        x_s: &mut [T],
+        ord: FFTOrder,
+        pre_comp: &FFTPrecomputation<F>,
+    ) {
         use FFTOrder::*;
+        let pc = pre_comp.precomputation_for_subdomain(self).unwrap();
 
         let log_len = log2(x_s.len());
 
         if ord == OI {
-            self.oi_helper(x_s, self.group_gen);
+            self.oi_helper_with_roots(x_s, &pc.roots);
         } else {
-            self.io_helper(x_s, self.group_gen);
+            self.io_helper_with_roots(x_s, &pc.roots);
         }
 
         if ord == II {
-            derange(x_s, log_len);
+            derange_helper(x_s, log_len);
         }
     }
 
     // Handles doing an IFFT with handling of being in order and out of order.
     // The results here must all be divided by |x_s|,
     // which is left up to the caller to do.
-    fn ifft_helper_in_place<T: DomainCoeff<F>>(&self, x_s: &mut [T], ord: FFTOrder) {
+    fn ifft_helper_in_place_with_pc<T: DomainCoeff<F>>(
+        &self,
+        x_s: &mut [T],
+        ord: FFTOrder,
+        pre_comp: &IFFTPrecomputation<F>,
+    ) {
         use FFTOrder::*;
+        let pc = pre_comp.precomputation_for_subdomain(self).unwrap();
 
         let log_len = log2(x_s.len());
 
         if ord == II {
-            derange(x_s, log_len);
+            derange_helper(x_s, log_len);
         }
 
         if ord == IO {
-            self.io_helper(x_s, self.group_gen_inv);
+            self.io_helper_with_roots(x_s, &pc.inverse_roots);
         } else {
-            self.oi_helper(x_s, self.group_gen_inv);
+            self.oi_helper_with_roots(x_s, &pc.inverse_roots);
         }
     }
 
@@ -476,13 +540,11 @@ impl<F: FftField> EvaluationDomain<F> {
         );
         // 3. recombine halves
         // At this point, out is a blank slice.
-        out.par_chunks_mut(scr_lo.len())
-            .zip(&scr_hi)
-            .for_each(|(out_chunk, scr_hi)| {
-                for (out_elem, scr_lo) in out_chunk.iter_mut().zip(&scr_lo) {
-                    *out_elem = *scr_hi * scr_lo;
-                }
-            });
+        out.par_chunks_mut(scr_lo.len()).zip(&scr_hi).for_each(|(out_chunk, scr_hi)| {
+            for (out_elem, scr_lo) in out_chunk.iter_mut().zip(&scr_lo) {
+                *out_elem = *scr_hi * scr_lo;
+            }
+        });
     }
 
     #[inline(always)]
@@ -518,23 +580,21 @@ impl<F: FftField> EvaluationDomain<F> {
             // we parallelize the butterfly operation within the chunk.
 
             if gap > MIN_GAP_SIZE_FOR_PARALLELISATION && num_chunks < max_threads {
-                cfg_iter_mut!(lo)
-                    .zip(hi)
-                    .zip(cfg_iter!(roots).step_by(step))
-                    .for_each(g);
+                cfg_iter_mut!(lo).zip(hi).zip(cfg_iter!(roots).step_by(step)).for_each(g);
             } else {
                 lo.iter_mut().zip(hi).zip(roots.iter().step_by(step)).for_each(g);
             }
         });
     }
 
-    fn io_helper<T: DomainCoeff<F>>(&self, xi: &mut [T], root: F) {
-        let mut roots = self.roots_of_unity(root);
+    fn io_helper_with_roots<T: DomainCoeff<F>>(&self, xi: &mut [T], roots: &[F]) {
+        let mut roots = std::borrow::Cow::Borrowed(roots);
+
         let mut step = 1;
         let mut first = true;
 
         #[cfg(feature = "parallel")]
-        let max_threads = rayon::current_num_threads();
+        let max_threads = snarkvm_utilities::parallel::max_available_threads();
         #[cfg(not(feature = "parallel"))]
         let max_threads = 1;
 
@@ -549,10 +609,10 @@ impl<F: FftField> EvaluationDomain<F> {
             // Which also implies a large lookup stride.
             if num_chunks >= MIN_NUM_CHUNKS_FOR_COMPACTION {
                 if !first {
-                    roots = cfg_into_iter!(roots).step_by(step * 2).collect()
+                    roots = Cow::Owned(cfg_into_iter!(roots.into_owned()).step_by(step * 2).collect());
                 }
                 step = 1;
-                roots.shrink_to_fit();
+                roots.to_mut().shrink_to_fit();
             } else {
                 step = num_chunks;
             }
@@ -573,9 +633,7 @@ impl<F: FftField> EvaluationDomain<F> {
         }
     }
 
-    fn oi_helper<T: DomainCoeff<F>>(&self, xi: &mut [T], root: F) {
-        let roots_cache = self.roots_of_unity(root);
-
+    fn oi_helper_with_roots<T: DomainCoeff<F>>(&self, xi: &mut [T], roots_cache: &[F]) {
         // The `cmp::min` is only necessary for the case where
         // `MIN_NUM_CHUNKS_FOR_COMPACTION = 1`. Else, notice that we compact
         // the roots cache by a stride of at least `MIN_NUM_CHUNKS_FOR_COMPACTION`.
@@ -585,7 +643,7 @@ impl<F: FftField> EvaluationDomain<F> {
         let mut compacted_roots = vec![F::default(); compaction_max_size];
 
         #[cfg(feature = "parallel")]
-        let max_threads = rayon::current_num_threads();
+        let max_threads = snarkvm_utilities::parallel::max_available_threads();
         #[cfg(not(feature = "parallel"))]
         let max_threads = 1;
 
@@ -604,19 +662,10 @@ impl<F: FftField> EvaluationDomain<F> {
                     .for_each(|(a, b)| *a = *b);
                 (&compacted_roots[..gap], 1)
             } else {
-                (&roots_cache[..], num_chunks)
+                (roots_cache, num_chunks)
             };
 
-            Self::apply_butterfly(
-                Self::butterfly_fn_oi,
-                xi,
-                roots,
-                step,
-                chunk_size,
-                num_chunks,
-                max_threads,
-                gap,
-            );
+            Self::apply_butterfly(Self::butterfly_fn_oi, xi, roots, step, chunk_size, num_chunks, max_threads, gap);
 
             gap *= 2;
         }
@@ -640,7 +689,11 @@ pub(super) fn bitrev(a: u64, log_len: u32) -> u64 {
     a.reverse_bits() >> (64 - log_len)
 }
 
-fn derange<T>(xi: &mut [T], log_len: u32) {
+pub(crate) fn derange<T>(xi: &mut [T]) {
+    derange_helper(xi, log2(xi.len()))
+}
+
+fn derange_helper<T>(xi: &mut [T], log_len: u32) {
     for idx in 1..(xi.len() as u64 - 1) {
         let ridx = bitrev(idx, log_len);
         if idx < ridx {
@@ -702,6 +755,7 @@ pub(crate) fn compute_powers<F: Field>(size: usize, g: F) -> Vec<F> {
 }
 
 /// An iterator over the elements of the domain.
+#[derive(Clone)]
 pub struct Elements<F: FftField> {
     cur_elem: F,
     cur_pow: u64,
@@ -723,12 +777,66 @@ impl<F: FftField> Iterator for Elements<F> {
     }
 }
 
+/// An iterator over the elements of the domain.
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct FFTPrecomputation<F: FftField> {
+    roots: Vec<F>,
+    domain: EvaluationDomain<F>,
+}
+
+impl<F: FftField> FFTPrecomputation<F> {
+    pub fn to_ifft_precomputation(&self) -> IFFTPrecomputation<F> {
+        let mut inverse_roots = self.roots.clone();
+        snarkvm_fields::batch_inversion(&mut inverse_roots);
+        IFFTPrecomputation { inverse_roots, domain: self.domain }
+    }
+
+    pub fn precomputation_for_subdomain<'a>(&'a self, domain: &EvaluationDomain<F>) -> Option<Cow<'a, Self>> {
+        if domain.size() == 1 {
+            return Some(Cow::Owned(Self { roots: vec![], domain: *domain }));
+        }
+        if &self.domain == domain {
+            Some(Cow::Borrowed(self))
+        } else if domain.size() < self.domain.size() {
+            let size_ratio = self.domain.size() / domain.size();
+            let roots = self.roots.iter().step_by(size_ratio).copied().collect();
+            Some(Cow::Owned(Self { roots, domain: *domain }))
+        } else {
+            None
+        }
+    }
+}
+
+/// An iterator over the elements of the domain.
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct IFFTPrecomputation<F: FftField> {
+    inverse_roots: Vec<F>,
+    domain: EvaluationDomain<F>,
+}
+
+impl<F: FftField> IFFTPrecomputation<F> {
+    pub fn precomputation_for_subdomain<'a>(&'a self, domain: &EvaluationDomain<F>) -> Option<Cow<'a, Self>> {
+        if domain.size() == 1 {
+            return Some(Cow::Owned(Self { inverse_roots: vec![], domain: *domain }));
+        }
+        if &self.domain == domain {
+            Some(Cow::Borrowed(self))
+        } else if domain.size() < self.domain.size() {
+            let size_ratio = self.domain.size() / domain.size();
+            let inverse_roots = self.inverse_roots.iter().step_by(size_ratio).copied().collect();
+            Some(Cow::Owned(Self { inverse_roots, domain: *domain }))
+        } else {
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::fft::{DensePolynomial, EvaluationDomain};
     use snarkvm_curves::bls12_377::Fr;
     use snarkvm_fields::{FftField, Field, One, Zero};
-    use snarkvm_utilities::UniformRand;
+    use snarkvm_utilities::Uniform;
 
     use rand::{thread_rng, Rng};
 
@@ -882,6 +990,46 @@ mod tests {
                 "degree = {}, domain size = {}",
                 degree, domain_size
             );
+        }
+    }
+
+    /// Tests that FFT precomputation is correctly subdomained
+    #[test]
+    fn test_fft_precomputation() {
+        for i in 1..10 {
+            let big_domain = EvaluationDomain::<Fr>::new(i).unwrap();
+            let pc = big_domain.precompute_fft();
+            for j in 1..i {
+                let small_domain = EvaluationDomain::<Fr>::new(j).unwrap();
+                let small_pc = small_domain.precompute_fft();
+                assert_eq!(pc.precomputation_for_subdomain(&small_domain).unwrap().as_ref(), &small_pc);
+            }
+        }
+    }
+
+    /// Tests that IFFT precomputation is correctly subdomained
+    #[test]
+    fn test_ifft_precomputation() {
+        for i in 1..10 {
+            let big_domain = EvaluationDomain::<Fr>::new(i).unwrap();
+            let pc = big_domain.precompute_ifft();
+            for j in 1..i {
+                let small_domain = EvaluationDomain::<Fr>::new(j).unwrap();
+                let small_pc = small_domain.precompute_ifft();
+                assert_eq!(pc.precomputation_for_subdomain(&small_domain).unwrap().as_ref(), &small_pc);
+            }
+        }
+    }
+
+    /// Tests that IFFT precomputation can be correctly computed from
+    /// FFT precomputation
+    #[test]
+    fn test_ifft_precomputation_from_fft() {
+        for i in 1..10 {
+            let domain = EvaluationDomain::<Fr>::new(i).unwrap();
+            let pc = domain.precompute_ifft();
+            let fft_pc = domain.precompute_fft();
+            assert_eq!(pc, fft_pc.to_ifft_precomputation())
         }
     }
 }
