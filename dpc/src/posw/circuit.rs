@@ -23,8 +23,7 @@ use snarkvm_algorithms::prelude::*;
 use snarkvm_gadgets::{
     algorithms::merkle_tree::compute_masked_root,
     traits::{AllocGadget, CRHGadget, MaskedCRHGadget, PRFGadget},
-    EqGadget,
-    ToBytesGadget,
+    EqGadget, ToBytesGadget,
 };
 use snarkvm_r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError};
 
@@ -43,6 +42,14 @@ impl<N: Network> PoSWCircuit<N> {
         let tree = block_template.to_header_tree()?;
 
         Ok(Self { block_header_root: (*tree.root()).into(), nonce, hashed_leaves: tree.hashed_leaves().to_vec() })
+    }
+
+    pub fn frow_raw(
+        block_header_root: N::BlockHeaderRoot,
+        nonce: N::PoSWNonce,
+        hashed_leaves: Vec<<<N::BlockHeaderRootParameters as MerkleParameters>::LeafCRH as CRH>::Output>,
+    ) -> Self {
+        Self { block_header_root, nonce, hashed_leaves }
     }
 
     /// Creates a blank PoSW circuit for setup.
