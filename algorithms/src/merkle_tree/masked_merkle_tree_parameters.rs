@@ -28,7 +28,7 @@ impl<H: CRH, const DEPTH: usize> MerkleParameters for MaskedMerkleTreeParameters
     fn setup(message: &str) -> Self {
         Self(Self::H::setup(message), Self::H::setup(message), message.into())
     }
-
+ 
     // TODO (howardwu): TEMPORARY - This is a temporary fix to support ToBytes/FromBytes for
     //  LedgerProof and LocalProof. While it is "safe", it is not performant to deserialize
     //  in such a manual fashion. However, given the extent to which modifying the architecture

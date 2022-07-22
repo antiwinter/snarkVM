@@ -207,10 +207,9 @@ where
             Zero => Some(*self),
             QuadraticNonResidue => None,
             QuadraticResidue => {
-                let two_inv = P::Fp::one()
-                    .double()
-                    .inverse()
-                    .expect("Two should always have an inverse");
+                let mut two_inv = P::Fp::one().double();
+                two_inv = two_inv.inverse().expect("Two should always have an inverse");
+                
                 let alpha = self
                     .norm()
                     .sqrt()

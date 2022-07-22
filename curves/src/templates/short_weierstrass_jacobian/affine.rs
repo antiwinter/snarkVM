@@ -21,13 +21,7 @@ use crate::{
 };
 use snarkvm_fields::{impl_add_sub_from_field_ref, Field, One, PrimeField, SquareRootField, Zero};
 use snarkvm_utilities::{
-    bititerator::BitIteratorBE,
-    rand::UniformRand,
-    serialize::*,
-    FromBytes,
-    ToBits,
-    ToBytes,
-    ToMinimalBits,
+    bititerator::BitIteratorBE, rand::UniformRand, serialize::*, FromBytes, ToBits, ToBytes, ToMinimalBits,
 };
 
 use rand::{
@@ -119,6 +113,14 @@ impl<P: Parameters> AffineCurve for Affine<P> {
     /// largest y-coordinate be selected.
     fn from_x_coordinate(x: Self::BaseField, greatest: bool) -> Option<Self> {
         // Compute x^3 + ax + b
+
+        let x2 =  x.square();
+        let x3 = x2 * x;
+        let xa = P::mul_by_a(&x);
+        let plus = x3 + xa;
+        let y2 = P::add_b(&plus);
+        let yy = y2.sqrt();
+
         let x3b = P::add_b(&((x.square() * x) + P::mul_by_a(&x)));
 
         x3b.sqrt().map(|y| {
@@ -127,7 +129,7 @@ impl<P: Parameters> AffineCurve for Affine<P> {
             let y = if (y < negy) ^ greatest { y } else { negy };
             Self::new(x, y, false)
         })
-    }
+    }  
 
     /// Attempts to construct an affine point given a y-coordinate. The
     /// point is not guaranteed to be in the prime order subgroup.

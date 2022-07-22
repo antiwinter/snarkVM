@@ -433,7 +433,60 @@ impl<P: Fp384Parameters> SquareRootField for Fp384<P> {
 
     #[inline]
     fn sqrt(&self) -> Option<Self> {
-        sqrt_impl!(Self, P, self)
+        use crate::LegendreSymbol::*;
+        // https://eprint.iacr.org/2012/685.pdf (page 12, algorithm 5)
+        // Actually this is just normal Tonelli-Shanks; since `P::Generator`
+        // is a quadratic non-residue, `P::ROOT_OF_UNITY = P::GENERATOR ^ t`
+        // is also a quadratic non-residue (since `t` is odd).
+        match self.legendre() {
+            Zero => Some(*self),
+            QuadraticNonResidue => None,
+            QuadraticResidue => {
+                let mut z = Self::two_adic_root_of_unity();
+                let mut w = self.pow(P::T_MINUS_ONE_DIV_TWO);
+                let mut x = w * self;
+                let mut b = x * w;
+
+                let mut v = P::TWO_ADICITY as usize;
+                // t = self^t
+                #[cfg(debug_assertions)]
+                {
+                    let mut check = b;
+                    for _ in 0..(v - 1) {
+                        check.square_in_place();
+                    }
+                    if !check.is_one() {
+                        panic!("Input is not a square root, but it passed the QR test")
+                    }
+                }
+
+                // println!("z{:?}, w{:?}, x{:?}, b{:?}", z, w, x, b);
+
+                while !b.is_one() {
+                    let mut k = 0usize;
+
+                    let mut b2k = b;
+                    while !b2k.is_one() {
+                        // invariant: b2k = b^(2^k) after entering this loop
+                        b2k.square_in_place();
+                        k += 1;
+                    }
+
+                    let j = v - k - 1;
+                    w = z;
+                    for _ in 0..j {
+                        w.square_in_place();
+                    }
+
+                    z = w.square();
+                    b *= &z;
+                    x *= &w;
+                    v = k;
+                }
+
+                Some(x)
+            }
+        }
     }
 
     fn sqrt_in_place(&mut self) -> Option<&mut Self> {

@@ -143,6 +143,8 @@ pub trait Field:
             if i {
                 res *= self;
             }
+
+            println!("");
         }
         res
     }

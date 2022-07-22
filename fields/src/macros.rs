@@ -130,6 +130,8 @@ macro_rules! sqrt_impl {
                     }
                 }
 
+                println!("z{:?}, w{:?}, x{:?}, b{:?}", z, w, x, b);
+
                 while !b.is_one() {
                     let mut k = 0usize;
 
