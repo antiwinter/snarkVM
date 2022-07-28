@@ -20,22 +20,15 @@ use std::collections::BTreeMap;
 use crate::{
     fft,
     fft::{
-        domain::IFFTPrecomputation,
-        polynomial::PolyMultiplier,
-        DensePolynomial,
-        EvaluationDomain,
-        SparsePolynomial,
+        domain::IFFTPrecomputation, polynomial::PolyMultiplier, DensePolynomial, EvaluationDomain, SparsePolynomial,
     },
     polycommit::sonic_pc::{LabeledPolynomial, PolynomialInfo, PolynomialLabel},
     snark::marlin::{
         ahp::{
             indexer::{CircuitInfo, Matrix},
-            verifier,
-            AHPForR1CS,
-            UnnormalizedBivariateLagrangePoly,
+            verifier, AHPForR1CS, UnnormalizedBivariateLagrangePoly,
         },
-        prover,
-        MarlinMode,
+        prover, MarlinMode,
     },
 };
 use snarkvm_fields::PrimeField;
@@ -98,11 +91,14 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
 
         let sumcheck_lhs = Self::calculate_lhs(&state, t, summed_z_m, z, *alpha);
 
-        debug_assert!(
-            sumcheck_lhs.evaluate_over_domain_by_ref(constraint_domain).evaluations.into_iter().sum::<F>().is_zero()
-        );
+        debug_assert!(sumcheck_lhs
+            .evaluate_over_domain_by_ref(constraint_domain)
+            .evaluations
+            .into_iter()
+            .sum::<F>()
+            .is_zero());
 
-        let sumcheck_time = start_timer!(|| "Compute sumcheck h and g polys");
+        let sumcheck_time = start_timer!(|| "divide_by_vanishing_poly");
         let (h_1, x_g_1) = sumcheck_lhs.divide_by_vanishing_poly(constraint_domain).unwrap();
         let g_1 = DensePolynomial::from_coefficients_slice(&x_g_1.coeffs[1..]);
         drop(x_g_1);

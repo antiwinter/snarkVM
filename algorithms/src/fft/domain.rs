@@ -27,16 +27,13 @@
 //! by performing an O(n log n) FFT over such a domain.
 
 use crate::{
-    cfg_chunks_mut,
-    cfg_into_iter,
-    cfg_iter,
-    cfg_iter_mut,
+    cfg_chunks_mut, cfg_into_iter, cfg_iter, cfg_iter_mut,
     fft::{DomainCoeff, SparsePolynomial},
 };
 use snarkvm_fields::{batch_inversion, FftField, FftParameters, Field};
 #[cfg(feature = "parallel")]
 use snarkvm_utilities::max_available_threads;
-use snarkvm_utilities::{execute_with_max_available_threads, serialize::*};
+use snarkvm_utilities::{antiprofiler, execute_with_max_available_threads, serialize::*};
 
 use rand::Rng;
 use std::{borrow::Cow, fmt};
@@ -149,7 +146,11 @@ impl<F: FftField> EvaluationDomain<F> {
     /// having `num_coeffs` coefficients.
     pub fn compute_size_of_domain(num_coeffs: usize) -> Option<usize> {
         let size = num_coeffs.next_power_of_two();
-        if size.trailing_zeros() <= F::FftParameters::TWO_ADICITY { Some(size) } else { None }
+        if size.trailing_zeros() <= F::FftParameters::TWO_ADICITY {
+            Some(size)
+        } else {
+            None
+        }
     }
 
     /// Return the size of `self`.
@@ -160,7 +161,11 @@ impl<F: FftField> EvaluationDomain<F> {
     /// Compute an FFT.
     pub fn fft<T: DomainCoeff<F>>(&self, coeffs: &[T]) -> Vec<T> {
         let mut coeffs = coeffs.to_vec();
+
+        antiprofiler::start(&format!("FFT {}", self.size()));
         self.fft_in_place(&mut coeffs);
+        antiprofiler::end(&format!("FFT {}", self.size()));
+
         coeffs
     }
 

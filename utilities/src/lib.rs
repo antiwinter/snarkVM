@@ -43,6 +43,12 @@ pub use std::{boxed::Box, vec::Vec};
 #[macro_use]
 extern crate thiserror;
 
+#[macro_use]
+extern crate lazy_static;
+
+pub mod antiprofiler;
+pub use antiprofiler::*;
+
 pub mod biginteger;
 pub use biginteger::*;
 

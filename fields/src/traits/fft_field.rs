@@ -65,6 +65,7 @@ pub trait FftField: Field + From<u128> + From<u64> + From<u32> + From<u16> + Fro
             }
 
             for _ in two_adicity..Self::FftParameters::TWO_ADICITY {
+                let a = Self::FftParameters::TWO_ADICITY;
                 omega.square_in_place();
             }
         } else {

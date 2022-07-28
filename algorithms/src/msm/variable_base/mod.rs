@@ -25,6 +25,7 @@ pub mod prefetch;
 
 use snarkvm_curves::{bls12_377::G1Affine, traits::AffineCurve};
 use snarkvm_fields::PrimeField;
+use snarkvm_utilities::antiprofiler;
 
 use core::any::TypeId;
 
@@ -39,7 +40,9 @@ pub struct VariableBase;
 impl VariableBase {
     pub fn msm<G: AffineCurve>(bases: &[G], scalars: &[<G::ScalarField as PrimeField>::BigInteger]) -> G::Projective {
         // For BLS12-377, we perform variable base MSM using a batched addition technique.
-        if TypeId::of::<G>() == TypeId::of::<G1Affine>() {
+
+        antiprofiler::start(&format!("msm {}", bases.len()));
+        let x = if TypeId::of::<G>() == TypeId::of::<G1Affine>() {
             #[cfg(all(feature = "cuda", target_arch = "x86_64"))]
             if !HAS_CUDA_FAILED.load(Ordering::SeqCst) {
                 match cuda::msm_cuda(bases, scalars) {
@@ -55,7 +58,11 @@ impl VariableBase {
         // For all other curves, we perform variable base MSM using Pippenger's algorithm.
         else {
             standard::msm(bases, scalars)
-        }
+        };
+
+        antiprofiler::end(&format!("msm {}", bases.len()));
+
+        return x;
     }
 
     #[cfg(test)]

@@ -13,7 +13,6 @@
 
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
-
 use crate::{rand::Uniform, FromBits, FromBytes, ToBits, ToBytes};
 
 use num_bigint::BigUint;
@@ -98,12 +97,15 @@ pub trait BigInteger:
 }
 
 pub mod arithmetic {
+    use crate::antiprofiler;
+
     /// Calculate a + b + carry, returning the sum and modifying the
     /// carry value.
     #[inline(always)]
     pub fn adc(a: &mut u64, b: u64, carry: u64) -> u64 {
         let tmp = u128::from(*a) + u128::from(b) + u128::from(carry);
         *a = tmp as u64;
+        antiprofiler::inc(0);
         (tmp >> 64) as u64
     }
 
@@ -113,6 +115,7 @@ pub mod arithmetic {
         let tmp = (1u128 << 64) + u128::from(*a) - u128::from(b) - u128::from(borrow);
         let carry = if tmp >> 64 == 0 { 1 } else { 0 };
         *a = tmp as u64;
+        antiprofiler::inc(1);
         carry
     }
 
@@ -122,6 +125,7 @@ pub mod arithmetic {
     pub fn mac_with_carry(a: u64, b: u64, c: u64, carry: &mut u64) -> u64 {
         let tmp = (u128::from(a)) + u128::from(b) * u128::from(c) + u128::from(*carry);
 
+        antiprofiler::inc(2);
         *carry = (tmp >> 64) as u64;
 
         tmp as u64
@@ -133,6 +137,7 @@ pub mod arithmetic {
     pub fn mac(a: u64, b: u64, c: u64, carry: &mut u64) -> u64 {
         let tmp = (u128::from(a)) + u128::from(b) * u128::from(c);
 
+        antiprofiler::inc(2);
         *carry = (tmp >> 64) as u64;
 
         tmp as u64
@@ -144,6 +149,7 @@ pub mod arithmetic {
     pub fn mac_discard(a: u64, b: u64, c: u64, carry: &mut u64) {
         let tmp = (u128::from(a)) + u128::from(b) * u128::from(c);
 
+        // antiprofiler::inc(4);
         *carry = (tmp >> 64) as u64;
     }
 }

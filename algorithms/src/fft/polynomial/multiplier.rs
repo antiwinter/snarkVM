@@ -20,7 +20,7 @@ use crate::fft::domain::{FFTPrecomputation, IFFTPrecomputation};
 
 /// A struct that helps multiply a batch of polynomials
 use super::*;
-use snarkvm_utilities::{cfg_iter, cfg_iter_mut, ExecutionPool};
+use snarkvm_utilities::{antiprofiler, cfg_iter, cfg_iter_mut, ExecutionPool};
 
 #[derive(Default)]
 pub struct PolyMultiplier<'a, F: PrimeField> {
@@ -144,7 +144,11 @@ impl<'a, F: PrimeField> PolyMultiplier<'a, F> {
             pool.add_job(move || {
                 let mut p = p.to_owned().into_owned().coeffs;
                 p.resize(domain.size(), F::zero());
+
+                antiprofiler::start("fft x");
                 domain.out_order_fft_in_place_with_pc(&mut p, fft_pc);
+                antiprofiler::end("fft x");
+
                 (l, p)
             })
         }
@@ -158,14 +162,22 @@ impl<'a, F: PrimeField> PolyMultiplier<'a, F> {
         }
         let p = pool.execute_all().into_iter().collect::<BTreeMap<_, _>>();
         assert_eq!(p.len(), 4);
+
+        antiprofiler::start("4xx");
         let mut result = cfg_iter!(p[labels[0].borrow()])
             .zip(&p[labels[1].borrow()])
             .zip(&p[labels[2].borrow()])
             .zip(&p[labels[3].borrow()])
             .map(|(((a, b), c), d)| f(*a, *b, *c, *d))
             .collect::<Vec<_>>();
+        antiprofiler::end("4xx");
+
         drop(p);
+
+        antiprofiler::start("ifft oo");
         domain.out_order_ifft_in_place_with_pc(&mut result, &self.ifft_precomputation.unwrap());
+        antiprofiler::end("ifft oo");
+
         Some(DensePolynomial::from_coefficients_vec(result))
     }
 }

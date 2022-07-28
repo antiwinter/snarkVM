@@ -67,7 +67,7 @@ impl<'a, T> Default for ExecutionPool<'a, T> {
 #[cfg(feature = "parallel")]
 pub fn max_available_threads() -> usize {
     use aleo_std::Cpu;
-    let rayon_threads = rayon::current_num_threads();
+    let rayon_threads = 1;
 
     match aleo_std::get_cpu() {
         Cpu::Intel => num_cpus::get_physical().min(rayon_threads),

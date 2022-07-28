@@ -235,7 +235,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                 .add(-beta * g_1_at_beta, LCTerm::One);
             lincheck_sumcheck
         };
-        debug_assert!(evals.get_lc_eval(&lincheck_sumcheck, beta)?.is_zero());
+        // debug_assert!(evals.get_lc_eval(&lincheck_sumcheck, beta)?.is_zero());
 
         for z_b in z_b_s {
             linear_combinations.insert(z_b.label.clone(), z_b);
@@ -269,7 +269,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
 
         matrix_sumcheck -=
             &LinearCombination::new("h_2", [(largest_non_zero_domain.evaluate_vanishing_polynomial(gamma), "h_2")]);
-        debug_assert!(evals.get_lc_eval(&matrix_sumcheck, gamma)?.is_zero());
+        // debug_assert!(evals.get_lc_eval(&matrix_sumcheck, gamma)?.is_zero());
 
         linear_combinations.insert("g_a".into(), g_a);
         linear_combinations.insert("g_b".into(), g_b);

@@ -24,8 +24,7 @@ use crate::{
         fields::FieldGadget,
         select::CondSelectGadget,
     },
-    FpGadget,
-    ToConstraintFieldGadget,
+    FpGadget, ToConstraintFieldGadget,
 };
 use snarkvm_curves::{
     templates::twisted_edwards_extended::{Affine as TEAffine, Projective as TEProjective},
@@ -506,6 +505,12 @@ impl<P: TwistedEdwardsParameters, F: Field, FG: FieldGadget<P::BaseField, F>> Gr
             //   2. g_i*h_i^-1 if the input bit is 1 and the mask is 0.
             //   3. g_i^-1*h_i if the input bit is 0 and the mask is 1.
             //   4. h_i if the input bit is 1 and the mask is 1.
+
+            if *mask_base != *base {
+                let a = 5;
+                println!("a");
+            }
+
             let bits = [*bit.borrow(), *mask.borrow()];
             let table = [mask_base.neg(), mask_base.neg() + base, base.neg() + mask_base, *mask_base];
             let adder: Self = two_bit_lookup_helper(cs.ns(|| "two bit lookup"), bits, table)?;

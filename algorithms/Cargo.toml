@@ -1,7 +1,7 @@
 [package]
 name = "snarkvm-algorithms"
 version = "0.7.5"
-authors = [ "The Aleo Team <hello@aleo.org>" ]
+authors = ["The Aleo Team <hello@aleo.org>"]
 description = "Algorithms for a decentralized virtual machine"
 homepage = "https://aleo.org"
 repository = "https://github.com/AleoHQ/snarkVM"
@@ -10,10 +10,16 @@ keywords = [
   "cryptography",
   "blockchain",
   "decentralized",
-  "zero-knowledge"
+  "zero-knowledge",
 ]
-categories = [ "compilers", "cryptography", "mathematics", "wasm", "web-programming" ]
-include = [ "Cargo.toml", "src", "README.md", "LICENSE.md" ]
+categories = [
+  "compilers",
+  "cryptography",
+  "mathematics",
+  "wasm",
+  "web-programming",
+]
+include = ["Cargo.toml", "src", "README.md", "LICENSE.md"]
 license = "GPL-3.0"
 edition = "2021"
 
@@ -105,7 +111,7 @@ default-features = false
 
 [dependencies.aleo-std]
 version = "0.1.14"
-default-features = false
+features = ["profiler"]
 
 [dependencies.anyhow]
 version = "1.0"
@@ -125,7 +131,7 @@ version = "0.4.43"
 
 [dependencies.derivative]
 version = "2"
-features = [ "use_core" ]
+features = ["use_core"]
 
 [dependencies.digest]
 version = "0.10"
@@ -133,7 +139,7 @@ version = "0.10"
 [dependencies.getrandom]
 version = "0.2"
 optional = true
-features = [ "js" ]
+features = ["js"]
 default-features = false
 
 [dependencies.hashbrown]
@@ -194,7 +200,7 @@ default-features = false
 [dependencies.smallvec]
 version = "1.8"
 default-features = false
-features = [ "const_generics", "const_new" ]
+features = ["const_generics", "const_new"]
 
 [dependencies.thiserror]
 version = "1.0"
@@ -203,7 +209,7 @@ version = "1.0"
 version = "0.4"
 optional = true
 
-[dev-dependencies.expect-test ]
+[dev-dependencies.expect-test]
 version = "1.1.0"
 
 [dev-dependencies.blake2]
@@ -236,7 +242,7 @@ default = [
   "snarkvm-curves/default",
   "snarkvm-fields/default",
   "snarkvm-r1cs/default",
-  "snarkvm-utilities/default"
+  "snarkvm-utilities/default",
 ]
 full = [
   "commitment",
@@ -248,7 +254,7 @@ full = [
   "polycommit_full",
   "prf",
   "signature",
-  "snark"
+  "snark",
 ]
 wasm = [
   "commitment",
@@ -264,23 +270,28 @@ wasm = [
   "snark",
   "getrandom",
   "wasm-bindgen-futures",
-  "reqwest"
+  "reqwest",
 ]
 
-cuda = [ "rust-gpu-tools" ]
-parallel = [ "rayon", "num_cpus", "snarkvm-fields/parallel", "snarkvm-utilities/parallel" ]
-profiler = [ "aleo-std/profiler" ]
+cuda = ["rust-gpu-tools"]
+parallel = [
+  "rayon",
+  "num_cpus",
+  "snarkvm-fields/parallel",
+  "snarkvm-utilities/parallel",
+]
+profiler = ["aleo-std/profiler"]
 
-commitment = [ "crh" ]
-crh = [ "crypto_hash" ]
-crypto_hash = [ "blake2s_simd" ]
-encryption = [ "signature" ]
-fft = [ ]
-merkle_tree = [ ]
-msm = [ ]
-polycommit = [ "rand_core", "fft", "crh", "msm" ]
-polycommit_wasm = [ "polycommit", "snarkvm-parameters/wasm" ]
-polycommit_full = [ "polycommit", "snarkvm-parameters/default" ]
-prf = [ "crypto_hash" ]
-signature = [ "encryption", "crypto_hash" ]
-snark = [ "fft", "msm", "polycommit" ]
+commitment = ["crh"]
+crh = ["crypto_hash"]
+crypto_hash = ["blake2s_simd"]
+encryption = ["signature"]
+fft = []
+merkle_tree = []
+msm = []
+polycommit = ["rand_core", "fft", "crh", "msm"]
+polycommit_wasm = ["polycommit", "snarkvm-parameters/wasm"]
+polycommit_full = ["polycommit", "snarkvm-parameters/default"]
+prf = ["crypto_hash"]
+signature = ["encryption", "crypto_hash"]
+snark = ["fft", "msm", "polycommit"]

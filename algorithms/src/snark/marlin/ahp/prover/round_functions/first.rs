@@ -19,17 +19,11 @@ use std::{collections::BTreeMap, sync::Arc};
 use crate::{
     fft::{DensePolynomial, EvaluationDomain, Evaluations as EvaluationsOnDomain, SparsePolynomial},
     polycommit::sonic_pc::{
-        LabeledPolynomial,
-        LabeledPolynomialWithBasis,
-        PolynomialInfo,
-        PolynomialLabel,
-        PolynomialWithBasis,
+        LabeledPolynomial, LabeledPolynomialWithBasis, PolynomialInfo, PolynomialLabel, PolynomialWithBasis,
     },
     snark::marlin::{
         ahp::{AHPError, AHPForR1CS},
-        prover,
-        witness_label,
-        MarlinMode,
+        prover, witness_label, MarlinMode,
     },
 };
 use itertools::Itertools;
@@ -199,6 +193,8 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         let should_randomize = MM::ZK && will_be_evaluated;
         let label = label.to_string();
         let poly_time = start_timer!(|| format!("Computing {label}"));
+
+        let checkzk = MM::ZK;
 
         let evals = EvaluationsOnDomain::from_vec_and_domain(evaluations, constraint_domain);
 

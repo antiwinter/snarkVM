@@ -604,6 +604,8 @@ impl<F: PrimeField> TwoBitLookupGadget<F> for AllocatedFp<F> {
         debug_assert!(c.len() == 4);
 
         let result = Self::alloc(cs.ns(|| "Allocate lookup result"), || {
+            let b0 = b[0].get_value();
+            let b1 = b[1].get_value();
             match (b[0].get_value().get()?, b[1].get_value().get()?) {
                 (false, false) => Ok(c[0]),
                 (false, true) => Ok(c[2]),
