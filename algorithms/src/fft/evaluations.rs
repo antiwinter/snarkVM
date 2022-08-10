@@ -23,7 +23,7 @@ use itertools::Itertools;
 use rayon::prelude::*;
 
 use snarkvm_fields::PrimeField;
-use snarkvm_utilities::{antiprofiler, cfg_iter, cfg_iter_mut, serialize::*};
+use snarkvm_utilities::{antiprofiler::poke, cfg_iter, cfg_iter_mut, serialize::*};
 
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
@@ -54,9 +54,9 @@ impl<F: PrimeField> Evaluations<F> {
         let mut evals = self.evaluations.clone();
         evals.resize(self.domain.size(), F::zero());
 
-        antiprofiler::start(&format!("ifft od {}", self.domain.size()));
+        let ap = poke();
         self.domain.in_order_ifft_in_place_with_pc(&mut evals, pc);
-        antiprofiler::end(&format!("ifft od {}", self.domain.size()));
+        ap.peek(&format!("ifft od {}", self.domain.size()));
 
         DensePolynomial::from_coefficients_vec(evals)
     }
@@ -64,9 +64,9 @@ impl<F: PrimeField> Evaluations<F> {
     /// Interpolate a polynomial from a list of evaluations
     pub fn interpolate(self) -> DensePolynomial<F> {
         let Self { evaluations: mut evals, domain } = self;
-        antiprofiler::start(&format!("ifft {}", domain.size()));
+        let ap = poke();
         domain.ifft_in_place(&mut evals);
-        antiprofiler::end(&format!("ifft {}", domain.size()));
+        ap.peek(&format!("ifft {}", domain.size()));
 
         DensePolynomial::from_coefficients_vec(evals)
     }
@@ -76,9 +76,9 @@ impl<F: PrimeField> Evaluations<F> {
         let Self { evaluations: mut evals, domain } = self;
         evals.resize(self.domain.size(), F::zero());
 
-        antiprofiler::start(&format!("ifft pc {}", domain.size()));
+        let ap = poke();
         domain.in_order_ifft_in_place_with_pc(&mut evals, pc);
-        antiprofiler::end(&format!("ifft pc {}", domain.size()));
+        ap.peek(&format!("ifft pc {}", domain.size()));
 
         DensePolynomial::from_coefficients_vec(evals)
     }

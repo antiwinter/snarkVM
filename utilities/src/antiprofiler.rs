@@ -60,16 +60,11 @@ fn hum(n: u64) -> String {
 }
 
 fn th(ms: u128) -> String {
-    let mut u = "ms";
-
-    let f = if ms > 999 {
-        u = "s";
-        ms as f64 / 1000_f64
+    if ms > 999 {
+        format!("{:.1}s", ms as f64 / 1000_f64).into()
     } else {
-        ms as f64 / 1_f64
-    };
-
-    format!("{:.2}{}", f, u).into()
+        format!("{:}", ms).into()
+    }
 }
 
 pub fn flush() {
@@ -108,10 +103,44 @@ pub fn end(name: &str) {
     println!("  ^^ AP {}: {} ms", name, th(d[name].elapsed().as_millis()));
 }
 
-// pub fn get(id: usize) -> u64 {
-//     counter[id]
-// }
+pub struct Ap {
+    t: Instant,
+    c: u64,
+}
 
-// pub fn reset(id: usize) {
-//     counter[id] = 0;
-// }
+pub fn poke() -> Ap {
+    let ap = Ap { t: Instant::now(), c: get(2) };
+    ap
+}
+
+impl Ap {
+    pub fn peek(&self, msg: &str) {
+        let mut d = timer.lock().unwrap();
+        let t = Instant::now();
+
+        let _ = *d.entry("g0".into()).or_insert(t);
+        let u = if !d.contains_key("gtimer") {
+            counter[1].store(get(2), Ordering::Relaxed);
+            0
+        } else {
+            d["gtimer"].elapsed().as_millis()
+        };
+
+        let c = self.t.elapsed().as_millis();
+        let g0 = d["g0"].elapsed().as_millis();
+
+        let mac = get(2) - self.c;
+        println!(
+            "{:5} {:15} {:4} +{:-4} MAC {:6} +{:-6}", //
+            th(g0),
+            msg,
+            th(c),
+            th(u - c),
+            hum(mac),
+            hum(get(1) - mac)
+        );
+
+        counter[1].store(get(2), Ordering::Relaxed);
+        *d.entry("gtimer".into()).or_insert(t) = t;
+    }
+}

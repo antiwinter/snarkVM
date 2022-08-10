@@ -33,7 +33,7 @@ use crate::{
 use snarkvm_fields::{batch_inversion, FftField, FftParameters, Field};
 #[cfg(feature = "parallel")]
 use snarkvm_utilities::max_available_threads;
-use snarkvm_utilities::{antiprofiler, execute_with_max_available_threads, serialize::*};
+use snarkvm_utilities::{antiprofiler::poke, execute_with_max_available_threads, serialize::*};
 
 use rand::Rng;
 use std::{borrow::Cow, fmt};
@@ -162,9 +162,9 @@ impl<F: FftField> EvaluationDomain<F> {
     pub fn fft<T: DomainCoeff<F>>(&self, coeffs: &[T]) -> Vec<T> {
         let mut coeffs = coeffs.to_vec();
 
-        antiprofiler::start(&format!("FFT {}", self.size()));
+        let ap = poke();
         self.fft_in_place(&mut coeffs);
-        antiprofiler::end(&format!("FFT {}", self.size()));
+        ap.peek(&format!("FFT {}", self.size()));
 
         coeffs
     }
