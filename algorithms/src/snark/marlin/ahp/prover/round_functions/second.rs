@@ -32,7 +32,7 @@ use crate::{
     },
 };
 use snarkvm_fields::PrimeField;
-use snarkvm_utilities::{cfg_iter, cfg_iter_mut, ExecutionPool};
+use snarkvm_utilities::{antiprofiler::poke, cfg_iter, cfg_iter_mut, ExecutionPool};
 
 use itertools::Itertools;
 use rand_core::RngCore;
@@ -189,6 +189,8 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                     // we rewrite this as  r_i * (z_a * (eta_c * z_b + 1) + eta_b * z_b);
                     // This is better since it reduces the number of required
                     // multiplications by `constraint_domain.size()`.
+
+                    let ap = poke(0, 0);
                     let mut summed_z_m = {
                         // Mutate z_b in place to compute eta_c * z_b + 1
                         // This saves us an additional memory allocation.
@@ -208,6 +210,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
 
                     // Multiply by linear combination coefficient.
                     cfg_iter_mut!(summed_z_m.coeffs).for_each(|c| *c *= *combiner);
+                    ap.peek("zm coeffs");
 
                     assert_eq!(summed_z_m.degree(), z_a.degree() + z_b.degree());
                     end_timer!(summed_z_m_poly_time);
@@ -219,8 +222,11 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         job_pool.add_job(|| {
             let t_poly_time = start_timer!(|| "Compute t poly");
 
+            let ap = poke(0, 0);
             let r_alpha_x_evals =
                 constraint_domain.batch_eval_unnormalized_bivariate_lagrange_poly_with_diff_inputs(alpha);
+            ap.peek("r_evals");
+
             let t = Self::calculate_t(
                 &[&state.index.a, &state.index.b, &state.index.c],
                 [F::one(), eta_b, eta_c],
@@ -245,6 +251,8 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         ifft_precomputation: &IFFTPrecomputation<F>,
     ) -> DensePolynomial<F> {
         let mut t_evals_on_h = vec![F::zero(); constraint_domain.size()];
+
+        let ap = poke(0, 0);
         for (matrix, eta) in matrices.iter().zip_eq(matrix_randomizers) {
             for (r, row) in matrix.iter().enumerate() {
                 for (coeff, c) in row.iter() {
@@ -253,6 +261,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                 }
             }
         }
+        ap.peek("calc_t");
         fft::Evaluations::from_vec_and_domain(t_evals_on_h, *constraint_domain).interpolate_with_pc(ifft_precomputation)
     }
 }

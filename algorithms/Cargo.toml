@@ -111,7 +111,7 @@ default-features = false
 
 [dependencies.aleo-std]
 version = "0.1.14"
-features = ["profiler"]
+# features = ["profiler"]
 
 [dependencies.anyhow]
 version = "1.0"

@@ -28,7 +28,10 @@ use crate::{
 };
 use itertools::Itertools;
 use snarkvm_fields::PrimeField;
-use snarkvm_utilities::cfg_into_iter;
+use snarkvm_utilities::{
+    antiprofiler::{hint, poke},
+    cfg_into_iter,
+};
 
 use rand_core::RngCore;
 
@@ -157,12 +160,14 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         let ratio = constraint_domain.size() / input_domain.size();
         w_extended.resize(constraint_domain.size() - input_domain.size(), F::zero());
 
+        let ap = poke(0, 0);
         let x_evals = {
             let mut coeffs = x_poly.coeffs.clone();
             coeffs.resize(constraint_domain.size(), F::zero());
             constraint_domain.in_order_fft_in_place_with_pc(&mut coeffs, state.fft_precomputation());
             coeffs
         };
+        ap.peek("x_evals");
 
         let w_poly_time = start_timer!(|| "Computing w polynomial");
         let w_poly_evals = cfg_into_iter!(0..constraint_domain.size())
@@ -171,14 +176,21 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                 _ => w_extended[k - (k / ratio) - 1] - x_evals[k],
             })
             .collect();
+
+        hint("r1: w_poly");
         let w_poly = EvaluationsOnDomain::from_vec_and_domain(w_poly_evals, constraint_domain)
             .interpolate_with_pc(state.ifft_precomputation());
+
+        let ap = poke(0, 0);
         let (w_poly, remainder) = w_poly.divide_by_vanishing_poly(input_domain).unwrap();
+        ap.peek("w_poly div");
         assert!(remainder.is_zero());
 
         assert!(w_poly.degree() < constraint_domain.size() - input_domain.size());
         end_timer!(w_poly_time);
-        PoolResult::Witness(LabeledPolynomial::new(label, w_poly, None, Self::zk_bound()))
+
+        let w = PoolResult::Witness(LabeledPolynomial::new(label, w_poly, None, Self::zk_bound()));
+        w
     }
 
     fn calculate_z_m<'a>(
@@ -198,10 +210,12 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
 
         let evals = EvaluationsOnDomain::from_vec_and_domain(evaluations, constraint_domain);
 
+        hint("r1: z_m");
         let mut poly = evals.interpolate_with_pc_by_ref(state.ifft_precomputation());
         if should_randomize {
             poly += &(&v_H * r.unwrap());
         }
+        hint("r1:");
 
         debug_assert!(
             poly.evaluate_over_domain_by_ref(constraint_domain)

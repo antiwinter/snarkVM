@@ -46,12 +46,12 @@ impl<'a, T> ExecutionPool<'a, T> {
     where
         T: Send + Sync,
     {
-        #[cfg(feature = "parallel")]
-        {
-            use rayon::prelude::*;
-            execute_with_max_available_threads(|| self.jobs.into_par_iter().map(|f| f()).collect())
-        }
-        #[cfg(not(feature = "parallel"))]
+        // #[cfg(feature = "parallel")]
+        // {
+        //     use rayon::prelude::*;
+        //     execute_with_max_available_threads(|| self.jobs.into_par_iter().map(|f| f()).collect())
+        // }
+        // #[cfg(not(feature = "parallel"))]
         {
             self.jobs.into_iter().map(|f| f()).collect()
         }

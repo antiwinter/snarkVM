@@ -23,6 +23,7 @@ lazy_static! {
     // static ref counter: [u64; 8] = [0; 8];
     static ref counter: [AtomicU64 ; 8] = [0u64; 8].map(|it| AtomicU64 ::new(it));
     static ref timer: Mutex<HashMap<String, Instant>> = Mutex::new(HashMap::new());
+    static ref header: Mutex<String> = Mutex::new("".into());
 }
 
 // static mut counter: [u64; 8] = [0; 8];
@@ -106,10 +107,19 @@ pub fn end(name: &str) {
 pub struct Ap {
     t: Instant,
     c: u64,
+    fixed: usize,
+    vars: usize,
 }
 
-pub fn poke() -> Ap {
-    let ap = Ap { t: Instant::now(), c: get(2) };
+pub fn hint(_h: &str) {
+    let mut h = header.lock().unwrap();
+    h.clear();
+    h.push_str(_h);
+    h.push_str(" ");
+}
+
+pub fn poke(f: usize, v: usize) -> Ap {
+    let ap = Ap { t: Instant::now(), c: get(2), fixed: f, vars: v };
     ap
 }
 
@@ -119,28 +129,30 @@ impl Ap {
         let t = Instant::now();
 
         let _ = *d.entry("g0".into()).or_insert(t);
-        let u = if !d.contains_key("gtimer") {
-            counter[1].store(get(2), Ordering::Relaxed);
-            0
-        } else {
-            d["gtimer"].elapsed().as_millis()
-        };
-
         let c = self.t.elapsed().as_millis();
+        let u = if !d.contains_key("gtimer") { c } else { d["gtimer"].elapsed().as_millis() };
+
         let g0 = d["g0"].elapsed().as_millis();
 
+        let u_mac = get(2) - get(1);
         let mac = get(2) - self.c;
+
+        let mut h = header.lock().unwrap().clone();
+        h.push_str(msg);
         println!(
-            "{:5} {:15} {:4} +{:-4} MAC {:6} +{:-6}", //
+            "{:6} {:25} {:5} +{:-4} MAC {:6} +{:-6} f:{:6}  v:{:6}", //
             th(g0),
-            msg,
+            &h,
             th(c),
             th(u - c),
             hum(mac),
-            hum(get(1) - mac)
+            hum(u_mac - mac),
+            self.fixed,
+            self.vars
         );
 
         counter[1].store(get(2), Ordering::Relaxed);
         *d.entry("gtimer".into()).or_insert(t) = t;
+        // h.clear();
     }
 }

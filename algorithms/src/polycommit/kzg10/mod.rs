@@ -29,7 +29,7 @@ use crate::{
 use snarkvm_curves::traits::{AffineCurve, PairingCurve, PairingEngine, ProjectiveCurve};
 use snarkvm_fields::{Field, One, PrimeField, Zero};
 use snarkvm_parameters::testnet3::PowersOfG;
-use snarkvm_utilities::{cfg_iter, rand::Uniform, BitIteratorBE};
+use snarkvm_utilities::{antiprofiler::poke, cfg_iter, rand::Uniform, BitIteratorBE};
 
 use core::{
     marker::PhantomData,
@@ -230,9 +230,11 @@ impl<E: PairingEngine> KZG10<E> {
 
         let mut commitment = match polynomial {
             Polynomial::Dense(polynomial) => {
+                let ap = poke(0, 0);
                 let (num_leading_zeros, plain_coeffs) = skip_leading_zeros_and_convert_to_bigints(polynomial);
 
                 let msm_time = start_timer!(|| "MSM to compute commitment to plaintext poly");
+                ap.peek("to bi");
                 let commitment = VariableBase::msm(&powers.powers_of_beta_g[num_leading_zeros..], &plain_coeffs);
                 end_timer!(msm_time);
 
@@ -241,12 +243,17 @@ impl<E: PairingEngine> KZG10<E> {
                 }
                 commitment
             }
-            Polynomial::Sparse(polynomial) => polynomial
-                .coeffs()
-                .map(|(i, coeff)| {
-                    powers.powers_of_beta_g[*i].mul_bits(BitIteratorBE::new_without_leading_zeros(coeff.to_repr()))
-                })
-                .sum(),
+            Polynomial::Sparse(polynomial) => {
+                let ap = poke(0, 0);
+                let s = polynomial
+                    .coeffs()
+                    .map(|(i, coeff)| {
+                        powers.powers_of_beta_g[*i].mul_bits(BitIteratorBE::new_without_leading_zeros(coeff.to_repr()))
+                    })
+                    .sum();
+                ap.peek("sparse msm");
+                s
+            }
         };
 
         let mut randomness = Randomness::empty();
@@ -296,7 +303,9 @@ impl<E: PairingEngine> KZG10<E> {
             hiding_bound,
         ));
 
+        let ap = poke(0, evaluations.len());
         let evaluations = evaluations.iter().map(|e| e.to_repr()).collect::<Vec<_>>();
+        ap.peek("eval to repr");
         let msm_time = start_timer!(|| "MSM to compute commitment to plaintext poly");
         let mut commitment = VariableBase::msm(&lagrange_basis.lagrange_basis_at_beta_g, &evaluations);
         end_timer!(msm_time);

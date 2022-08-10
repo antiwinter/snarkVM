@@ -16,13 +16,13 @@
 
 use crate::snark::marlin::{
     ahp::{indexer::Circuit, AHPError, AHPForR1CS},
-    prover,
-    MarlinMode,
+    prover, MarlinMode,
 };
 use itertools::Itertools;
 use snarkvm_fields::PrimeField;
 use snarkvm_r1cs::ConstraintSynthesizer;
 
+use snarkvm_utilities::antiprofiler::{hint, poke};
 use snarkvm_utilities::cfg_iter;
 #[cfg(not(feature = "std"))]
 use snarkvm_utilities::println;
@@ -43,6 +43,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
     ) -> Result<prover::State<'a, F, MM>, AHPError> {
         let init_time = start_timer!(|| "AHP::Prover::Init");
 
+        hint("_i:");
         // Perform matrix multiplications.
         let (padded_public_variables, private_variables, z_a, z_b) = cfg_iter!(circuits)
             .map(|circuit| {
@@ -51,10 +52,12 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                 circuit.generate_constraints(&mut pcs)?;
                 end_timer!(constraint_time);
 
+                let ap = poke(0, 0);
                 let padding_time = start_timer!(|| "Padding matrices to make them square");
                 crate::snark::marlin::ahp::matrices::pad_input_for_indexer_and_prover(&mut pcs);
                 pcs.make_matrices_square();
                 end_timer!(padding_time);
+                ap.peek("padding vars");
 
                 let num_non_zero_a = index.index_info.num_non_zero_a;
                 let num_non_zero_b = index.index_info.num_non_zero_b;
@@ -91,15 +94,36 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                 Self::formatted_public_input_is_admissible(&padded_public_variables)?;
 
                 let eval_z_a_time = start_timer!(|| "Evaluating z_A");
+
+                let mut ic: usize = 0;
+                for i in index.a.iter() {
+                    ic += i.len();
+                }
+                let ap = poke(ic, padded_public_variables.len() + private_variables.len());
+
                 let z_a = cfg_iter!(index.a)
-                    .map(|row| inner_product(&padded_public_variables, &private_variables, row, num_public_variables))
+                    .map(|row| {
+                        //
+                        inner_product(&padded_public_variables, &private_variables, row, num_public_variables)
+                    })
                     .collect();
                 end_timer!(eval_z_a_time);
+                ap.peek("z_a . F256");
 
                 let eval_z_b_time = start_timer!(|| "Evaluating z_B");
+
+                let mut ic: usize = 0;
+                for i in index.b.iter() {
+                    ic += i.len();
+                }
+                let ap = poke(ic, padded_public_variables.len() + private_variables.len());
+
                 let z_b = cfg_iter!(index.b)
                     .map(|row| inner_product(&padded_public_variables, &private_variables, row, num_public_variables))
                     .collect();
+
+                ap.peek("z_b . F256");
+
                 end_timer!(eval_z_b_time);
                 end_timer!(init_time);
                 Ok((padded_public_variables, private_variables, z_a, z_b))

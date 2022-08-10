@@ -23,6 +23,7 @@ use hashbrown::HashMap;
 use itertools::Itertools;
 use snarkvm_curves::traits::{AffineCurve, PairingCurve, PairingEngine, ProjectiveCurve};
 use snarkvm_fields::{One, Zero};
+use snarkvm_utilities::antiprofiler::poke;
 
 use core::{
     convert::TryInto,
@@ -262,7 +263,9 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
                         let rng_ref = rng.as_mut().map(|s| s as _);
                         match p {
                             PolynomialWithBasis::Lagrange { evaluations } => {
+                                let ap = poke(0, 0);
                                 let domain = crate::fft::EvaluationDomain::new(evaluations.evaluations.len()).unwrap();
+                                ap.peek("domain eval");
                                 let lagrange_basis = ck
                                     .lagrange_basis(domain)
                                     .ok_or(PCError::UnsupportedLagrangeBasisSize(domain.size()))?;
@@ -290,7 +293,7 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
                     .collect::<Result<Vec<_>, _>>()?
                     .into_iter()
                     .fold((E::G1Projective::zero(), Randomness::empty()), |mut a, b| {
-                        a.0.add_assign_mixed(&b.0.0);
+                        a.0.add_assign_mixed(&b.0 .0);
                         a.1 += (E::Fr::one(), &b.1);
                         a
                     });
@@ -753,9 +756,7 @@ mod tests {
 
     use super::{CommitterKey, SonicKZG10};
     use crate::{
-        crypto_hash::PoseidonSponge,
-        polycommit::test_templates::*,
-        snark::marlin::FiatShamirAlgebraicSpongeRng,
+        crypto_hash::PoseidonSponge, polycommit::test_templates::*, snark::marlin::FiatShamirAlgebraicSpongeRng,
     };
     use snarkvm_curves::bls12_377::{Bls12_377, Fq, Fr};
     use snarkvm_utilities::{rand::test_rng, FromBytes, ToBytes};

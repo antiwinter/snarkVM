@@ -41,7 +41,7 @@ impl VariableBase {
     pub fn msm<G: AffineCurve>(bases: &[G], scalars: &[<G::ScalarField as PrimeField>::BigInteger]) -> G::Projective {
         // For BLS12-377, we perform variable base MSM using a batched addition technique.
 
-        let ap = poke();
+        let ap = poke(0, 0);
         let x = if TypeId::of::<G>() == TypeId::of::<G1Affine>() {
             #[cfg(all(feature = "cuda", target_arch = "x86_64"))]
             if !HAS_CUDA_FAILED.load(Ordering::SeqCst) {
@@ -60,7 +60,7 @@ impl VariableBase {
             standard::msm(bases, scalars)
         };
 
-        ap.peek(&format!("msm {}", bases.len()));
+        ap.peek(&format!("msmv {}", bases.len()));
 
         return x;
     }

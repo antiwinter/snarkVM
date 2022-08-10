@@ -26,6 +26,7 @@ use snarkvm_gadgets::{
     EqGadget, ToBytesGadget,
 };
 use snarkvm_r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError};
+use snarkvm_utilities::antiprofiler::poke;
 
 use anyhow::Result;
 
@@ -89,10 +90,12 @@ impl<N: Network> ConstraintSynthesizer<N::InnerScalarField> for PoSWCircuit<N> {
         // Note: This is *not* enforced in the circuit.
         assert_eq!(usize::pow(2, N::HEADER_TREE_DEPTH as u32), self.hashed_leaves.len());
 
+        let ap = poke(0, 0);
         let two_to_one_crh_parameters =
             N::BlockHeaderRootTwoToOneCRHGadget::alloc_constant(&mut cs.ns(|| "new_parameters"), || {
                 Ok(N::block_header_root_parameters().two_to_one_crh())
             })?;
+        ap.peek("gen crh1");
 
         let mask_crh_parameters = <N::BlockHeaderRootTwoToOneCRHGadget as MaskedCRHGadget<
             <N::BlockHeaderRootParameters as MerkleParameters>::TwoToOneCRH,
@@ -113,11 +116,13 @@ impl<N: Network> ConstraintSynthesizer<N::InnerScalarField> for PoSWCircuit<N> {
             || Ok(vec![*self.nonce]),
         )?;
 
+        let ap = poke(0, 0);
         let mask = <N::PoSWMaskPRFGadget as PRFGadget<N::PoSWMaskPRF, N::InnerScalarField>>::check_evaluation_gadget(
             &mut cs.ns(|| "Compute mask"),
             &block_header_root,
             &nonce,
         )?;
+        ap.peek("poseidon");
 
         let mask_bytes = mask.to_bytes(&mut cs.ns(|| "mask to bytes"))?;
 
@@ -135,6 +140,8 @@ impl<N: Network> ConstraintSynthesizer<N::InnerScalarField> for PoSWCircuit<N> {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Compute the root using the masked tree.
+
+        let ap = poke(512, 1);
         let candidate_root = compute_masked_root::<
             <N::BlockHeaderRootParameters as MerkleParameters>::TwoToOneCRH,
             N::BlockHeaderRootTwoToOneCRHGadget,
@@ -148,6 +155,8 @@ impl<N: Network> ConstraintSynthesizer<N::InnerScalarField> for PoSWCircuit<N> {
             &mask_bytes,
             &hashed_leaf_gadgets,
         )?;
+
+        ap.peek("3r msm G256");
 
         // Enforce the input root is the same as the computed root.
         candidate_root.enforce_equal(cs.ns(|| "enforce equal"), &block_header_root)?;

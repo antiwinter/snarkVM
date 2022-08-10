@@ -19,18 +19,16 @@ use std::sync::Arc;
 use crate::{
     fft::{
         domain::{FFTPrecomputation, IFFTPrecomputation},
-        DensePolynomial,
-        EvaluationDomain,
-        Evaluations as EvaluationsOnDomain,
+        DensePolynomial, EvaluationDomain, Evaluations as EvaluationsOnDomain,
     },
     snark::marlin::{
         ahp::{indexer::Circuit, verifier},
-        AHPError,
-        MarlinMode,
+        AHPError, MarlinMode,
     },
 };
 use snarkvm_fields::PrimeField;
 use snarkvm_r1cs::SynthesisError;
+use snarkvm_utilities::antiprofiler::{self, hint, poke};
 
 /// State for the AHP prover.
 pub struct State<'a, F: PrimeField, MM: MarlinMode> {
@@ -96,19 +94,33 @@ impl<'a, F: PrimeField, MM: MarlinMode> State<'a, F, MM> {
         index: &'a Circuit<F, MM>,
     ) -> Result<Self, AHPError> {
         let index_info = &index.index_info;
+
+        let ap = poke(0, 0);
         let constraint_domain =
             EvaluationDomain::new(index_info.num_constraints).ok_or(SynthesisError::PolynomialDegreeTooLarge)?;
+        ap.peek("domain cs");
 
+        let ap = poke(0, 0);
         let non_zero_a_domain =
             EvaluationDomain::new(index_info.num_non_zero_a).ok_or(SynthesisError::PolynomialDegreeTooLarge)?;
+        ap.peek("domain a");
+
+        let ap = poke(0, 0);
         let non_zero_b_domain =
             EvaluationDomain::new(index_info.num_non_zero_b).ok_or(SynthesisError::PolynomialDegreeTooLarge)?;
+        ap.peek("domain b");
+
+        let ap = poke(0, 0);
         let non_zero_c_domain =
             EvaluationDomain::new(index_info.num_non_zero_c).ok_or(SynthesisError::PolynomialDegreeTooLarge)?;
+        ap.peek("domain c");
 
+        let ap = poke(0, 0);
         let input_domain =
             EvaluationDomain::new(padded_public_input[0].len()).ok_or(SynthesisError::PolynomialDegreeTooLarge)?;
+        ap.peek("domain pub");
 
+        antiprofiler::hint("_i: x_poly");
         let x_poly = padded_public_input
             .iter()
             .map(|padded_public_input| {
@@ -117,6 +129,7 @@ impl<'a, F: PrimeField, MM: MarlinMode> State<'a, F, MM> {
             .collect();
         let batch_size = private_variables.len();
         assert_eq!(padded_public_input.len(), batch_size);
+        hint("_i:");
 
         Ok(Self {
             index,

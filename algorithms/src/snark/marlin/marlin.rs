@@ -21,20 +21,10 @@ use crate::{
         ahp::{AHPError, AHPForR1CS, EvaluationsProvider},
         fiat_shamir::traits::FiatShamirRng,
         params::OptimizationType,
-        proof,
-        prover,
-        witness_label,
-        CircuitProvingKey,
-        CircuitVerifyingKey,
-        MarlinError,
-        MarlinMode,
-        Proof,
+        proof, prover, witness_label, CircuitProvingKey, CircuitVerifyingKey, MarlinError, MarlinMode, Proof,
         UniversalSRS,
     },
-    Prepare,
-    SNARKError,
-    SNARK,
-    SRS,
+    Prepare, SNARKError, SNARK, SRS,
 };
 use itertools::Itertools;
 use rand::{CryptoRng, Rng};
@@ -42,7 +32,10 @@ use rand_core::RngCore;
 use snarkvm_curves::PairingEngine;
 use snarkvm_fields::{One, PrimeField, ToConstraintField, Zero};
 use snarkvm_r1cs::ConstraintSynthesizer;
-use snarkvm_utilities::{to_bytes_le, ToBytes};
+use snarkvm_utilities::{
+    antiprofiler::{hint, poke},
+    to_bytes_le, ToBytes,
+};
 
 use std::{borrow::Borrow, sync::Arc};
 
@@ -147,7 +140,11 @@ impl<E: PairingEngine, FS: FiatShamirRng<E::Fr, E::Fq>, MM: MarlinMode, Input: T
     }
 
     fn terminate(terminator: &AtomicBool) -> Result<(), MarlinError> {
-        if terminator.load(Ordering::Relaxed) { Err(MarlinError::Terminated) } else { Ok(()) }
+        if terminator.load(Ordering::Relaxed) {
+            Err(MarlinError::Terminated)
+        } else {
+            Ok(())
+        }
     }
 
     fn init_sponge(
@@ -348,15 +345,18 @@ where
         let padded_public_input = prover_state.padded_public_inputs();
         assert_eq!(prover_state.batch_size, batch_size);
 
+        let ap = poke(0, 0);
         let mut sponge = Self::init_sponge(
             batch_size,
             &circuit_proving_key.circuit_verifying_key.circuit_commitments,
             &padded_public_input,
         );
+        ap.peek("chacha sponge");
 
         // --------------------------------------------------------------------
         // First round
 
+        hint("r1:");
         Self::terminate(terminator)?;
         let mut prover_state = AHPForR1CS::<_, MM>::prover_first_round(prover_state, zk_rng)?;
         Self::terminate(terminator)?;
@@ -372,19 +372,24 @@ where
         };
         end_timer!(first_round_comm_time);
 
+        let ap = poke(0, 0);
         Self::absorb_labeled(&first_commitments, &mut sponge);
+        ap.peek("chacha absorb");
         Self::terminate(terminator)?;
 
+        let ap = poke(0, 0);
         let (verifier_first_message, verifier_state) = AHPForR1CS::<_, MM>::verifier_first_round(
             circuit_proving_key.circuit_verifying_key.circuit_info,
             batch_size,
             &mut sponge,
         )?;
+        ap.peek("verify");
+
         // --------------------------------------------------------------------
 
         // --------------------------------------------------------------------
         // Second round
-
+        hint("r2:");
         Self::terminate(terminator)?;
         let (second_oracles, prover_state) =
             AHPForR1CS::<_, MM>::prover_second_round(&verifier_first_message, prover_state, zk_rng);
@@ -408,7 +413,7 @@ where
 
         // --------------------------------------------------------------------
         // Third round
-
+        hint("r3:");
         Self::terminate(terminator)?;
 
         let (prover_third_message, third_oracles, prover_state) =
@@ -432,7 +437,7 @@ where
 
         // --------------------------------------------------------------------
         // Fourth round
-
+        hint("r4:");
         Self::terminate(terminator)?;
 
         let first_round_oracles = Arc::clone(prover_state.first_round_oracles.as_ref().unwrap());
@@ -455,6 +460,7 @@ where
 
         Self::terminate(terminator)?;
 
+        hint("gather");
         // Gather prover polynomials in one vector.
         let polynomials: Vec<_> = circuit_proving_key
             .circuit
@@ -493,6 +499,7 @@ where
             h_2: *fourth_commitments[0].commitment(),
         };
 
+        hint("zip cmt");
         let labeled_commitments: Vec<_> = circuit_proving_key
             .circuit_verifying_key
             .iter()
@@ -522,6 +529,7 @@ where
         }
 
         // Compute the AHP verifier's query set.
+        hint("qs");
         let (query_set, verifier_state) = AHPForR1CS::<_, MM>::verifier_query_set(verifier_state);
         let lc_s = AHPForR1CS::<_, MM>::construct_linear_combinations(
             &public_input,
@@ -532,6 +540,7 @@ where
 
         Self::terminate(terminator)?;
 
+        hint("lc");
         let eval_time = start_timer!(|| "Evaluating linear combinations over query set");
         let mut evaluations = std::collections::BTreeMap::new();
         for (label, (_, point)) in query_set.to_set() {
@@ -549,6 +558,7 @@ where
 
         sponge.absorb_nonnative_field_elements(evaluations.to_field_elements(), OptimizationType::Weight);
 
+        hint("oc");
         let pc_proof = SonicKZG10::<E, FS>::open_combinations(
             &circuit_proving_key.committer_key,
             lc_s.values(),
@@ -561,6 +571,7 @@ where
 
         Self::terminate(terminator)?;
 
+        hint("mkproof");
         let proof = Proof::<E>::new(batch_size, commitments, evaluations, prover_third_message, pc_proof);
         assert_eq!(proof.pc_proof.is_hiding(), MM::ZK);
         end_timer!(prover_time);
