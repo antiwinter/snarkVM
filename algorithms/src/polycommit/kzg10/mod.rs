@@ -29,7 +29,12 @@ use crate::{
 use snarkvm_curves::traits::{AffineCurve, PairingCurve, PairingEngine, ProjectiveCurve};
 use snarkvm_fields::{Field, One, PrimeField, Zero};
 use snarkvm_parameters::testnet3::PowersOfG;
-use snarkvm_utilities::{antiprofiler::poke, cfg_iter, rand::Uniform, BitIteratorBE};
+use snarkvm_utilities::{
+    antiprofiler::{peek, poke},
+    cfg_iter,
+    rand::Uniform,
+    BitIteratorBE,
+};
 
 use core::{
     marker::PhantomData,
@@ -283,7 +288,11 @@ impl<E: PairingEngine> KZG10<E> {
         commitment.add_assign_mixed(&random_commitment);
 
         end_timer!(commit_time);
-        Ok((Commitment(commitment.into()), randomness))
+
+        let ap = poke(0, 0);
+        let o = Ok((Commitment(commitment.into()), randomness));
+        ap.peek("p->a");
+        o
     }
 
     /// Outputs a commitment to `polynomial`.
@@ -341,7 +350,10 @@ impl<E: PairingEngine> KZG10<E> {
         commitment.add_assign_mixed(&random_commitment);
 
         end_timer!(commit_time);
-        Ok((Commitment(commitment.into()), randomness))
+        let ap = poke(0, 0);
+        let o = Ok((Commitment(commitment.into()), randomness));
+        ap.peek("lag p->a");
+        o
     }
 
     /// Compute witness polynomial.
@@ -383,7 +395,9 @@ impl<E: PairingEngine> KZG10<E> {
         hiding_witness_polynomial: Option<&DensePolynomial<E::Fr>>,
     ) -> Result<Proof<E>, PCError> {
         Self::check_degree_is_too_large(witness_polynomial.degree(), powers.size())?;
+        let ap = poke(0, 0);
         let (num_leading_zeros, witness_coeffs) = skip_leading_zeros_and_convert_to_bigints(witness_polynomial);
+        ap.peek("to bi");
 
         let witness_comm_time = start_timer!(|| "Computing commitment to witness polynomial");
         let mut w = VariableBase::msm(&powers.powers_of_beta_g[num_leading_zeros..], &witness_coeffs);
@@ -418,7 +432,9 @@ impl<E: PairingEngine> KZG10<E> {
         let open_time = start_timer!(|| format!("Opening polynomial of degree {}", polynomial.degree()));
 
         let witness_time = start_timer!(|| "Computing witness polynomials");
+        let ap = poke(0, 0);
         let (witness_poly, hiding_witness_poly) = Self::compute_witness_polynomial(polynomial, point, rand)?;
+        ap.peek("compute witness");
         end_timer!(witness_time);
 
         let proof =

@@ -239,7 +239,9 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
 
         // assert!(remainder.is_zero());
         let multiplier = non_zero_domain.size_as_field_element / largest_non_zero_domain_size;
+        let ap = poke(0, h.coeffs.len());
         cfg_iter_mut!(h.coeffs).for_each(|c| *c *= multiplier);
+        ap.peek("mul coeffs");
 
         let g = LabeledPolynomial::new("g_".to_string() + label, g, Some(non_zero_domain.size() - 2), None);
 

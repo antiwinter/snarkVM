@@ -22,12 +22,12 @@ use crate::{
     polycommit::sonic_pc::{LCTerm, LabeledPolynomial, LinearCombination},
     snark::marlin::{
         ahp::{matrices, verifier, AHPError, CircuitInfo},
-        prover,
-        MarlinMode,
+        prover, MarlinMode,
     },
 };
 use itertools::Itertools;
 use snarkvm_fields::{Field, PrimeField};
+use snarkvm_utilities::antiprofiler::{peek, poke};
 
 use core::{borrow::Borrow, marker::PhantomData};
 use std::collections::BTreeMap;
@@ -168,7 +168,9 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
+        let ap = poke(0, 0);
         let input_domain = EvaluationDomain::new(public_inputs[0].len()).ok_or(AHPError::PolynomialDegreeTooLarge)?;
+        ap.peek("new domain");
 
         let first_round_msg = state.first_round_message.as_ref().unwrap();
         let alpha = first_round_msg.alpha;
@@ -179,12 +181,13 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         let prover::ThirdMessage { sum_a, sum_b, sum_c } = prover_third_message;
 
         #[rustfmt::skip]
-        let t_at_beta =
-            eta_a * state.non_zero_a_domain.size_as_field_element * sum_a +
-            eta_b * state.non_zero_b_domain.size_as_field_element * sum_b +
-            eta_c * state.non_zero_c_domain.size_as_field_element * sum_c;
+        let ap = poke(0, 0);
+        let t_at_beta = eta_a * state.non_zero_a_domain.size_as_field_element * sum_a
+            + eta_b * state.non_zero_b_domain.size_as_field_element * sum_b
+            + eta_c * state.non_zero_c_domain.size_as_field_element * sum_c;
         let r_b = state.third_round_message.as_ref().unwrap().r_b;
         let r_c = state.third_round_message.as_ref().unwrap().r_c;
+        ap.peek("small calc");
 
         let beta = state.second_round_message.unwrap().beta;
         let gamma = state.gamma.unwrap();
@@ -200,23 +203,42 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
             .collect::<Vec<_>>();
         let g_1 = LinearCombination::new("g_1", [(F::one(), "g_1")]);
 
+        let ap = poke(0, 0);
         let r_alpha_at_beta = constraint_domain.eval_unnormalized_bivariate_lagrange_poly(alpha, beta);
+        ap.peek("eval lagrange");
+
+        let ap = poke(0, 0);
         let v_H_at_alpha = constraint_domain.evaluate_vanishing_polynomial(alpha);
         let v_H_at_beta = constraint_domain.evaluate_vanishing_polynomial(beta);
         let v_X_at_beta = input_domain.evaluate_vanishing_polynomial(beta);
+        ap.peek("eval vanansh");
 
+        let ap = poke(0, 0);
         let z_b_s_at_beta = z_b_s.iter().map(|z_b| evals.get_lc_eval(z_b, beta)).collect::<Result<Vec<_>, _>>()?;
+        ap.peek("eval zbs");
+
+        let ap = poke(0, 0);
         let batch_z_b_at_beta: F =
             z_b_s_at_beta.iter().zip_eq(batch_combiners).map(|(z_b_at_beta, combiner)| *z_b_at_beta * combiner).sum();
-        let g_1_at_beta = evals.get_lc_eval(&g_1, beta)?;
+        ap.peek("sum");
 
+        let ap = poke(0, 0);
+        let g_1_at_beta = evals.get_lc_eval(&g_1, beta)?;
+        ap.peek("eval g1");
+
+        let ap = poke(0, 0);
         let lag_at_beta = input_domain.evaluate_all_lagrange_coefficients(beta);
+        ap.peek("eval lag");
+
+        let ap = poke(0, 0);
         let combined_x_at_beta = batch_combiners
             .iter()
             .zip_eq(&public_inputs)
             .map(|(c, x)| x.iter().zip_eq(&lag_at_beta).map(|(x, l)| *x * l).sum::<F>() * c)
             .sum::<F>();
+        ap.peek("combine x");
 
+        let ap = poke(0, 0);
         #[rustfmt::skip]
         let lincheck_sumcheck = {
             let mut lincheck_sumcheck = LinearCombination::empty("lincheck_sumcheck");
@@ -235,6 +257,8 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                 .add(-beta * g_1_at_beta, LCTerm::One);
             lincheck_sumcheck
         };
+        ap.peek("linsum");
+
         // debug_assert!(evals.get_lc_eval(&lincheck_sumcheck, beta)?.is_zero());
 
         for z_b in z_b_s {
@@ -246,30 +270,44 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         //  Matrix sumcheck:
         let mut matrix_sumcheck = LinearCombination::empty("matrix_sumcheck");
 
+        let ap = poke(0, 0);
         let g_a = LinearCombination::new("g_a", [(F::one(), "g_a")]);
         let g_a_at_gamma = evals.get_lc_eval(&g_a, gamma)?;
+        ap.peek("eval ga");
+
+        let ap = poke(0, 0);
         let selector_a = largest_non_zero_domain.evaluate_selector_polynomial(non_zero_a_domain, gamma);
+        ap.peek("eval selecor_a");
+
+        let ap = poke(0, 0);
         let lhs_a =
             Self::construct_lhs("a", alpha, beta, gamma, v_H_at_alpha * v_H_at_beta, g_a_at_gamma, *sum_a, selector_a);
         matrix_sumcheck += &lhs_a;
+        ap.peek("lhs_a");
 
+        let ap = poke(0, 0);
         let g_b = LinearCombination::new("g_b", [(F::one(), "g_b")]);
         let g_b_at_gamma = evals.get_lc_eval(&g_b, gamma)?;
         let selector_b = largest_non_zero_domain.evaluate_selector_polynomial(non_zero_b_domain, gamma);
         let lhs_b =
             Self::construct_lhs("b", alpha, beta, gamma, v_H_at_alpha * v_H_at_beta, g_b_at_gamma, *sum_b, selector_b);
         matrix_sumcheck += (r_b, &lhs_b);
+        ap.peek("lc gb");
 
+        let ap = poke(0, 0);
         let g_c = LinearCombination::new("g_c", [(F::one(), "g_c")]);
         let g_c_at_gamma = evals.get_lc_eval(&g_c, gamma)?;
         let selector_c = largest_non_zero_domain.evaluate_selector_polynomial(non_zero_c_domain, gamma);
         let lhs_c =
             Self::construct_lhs("c", alpha, beta, gamma, v_H_at_alpha * v_H_at_beta, g_c_at_gamma, *sum_c, selector_c);
         matrix_sumcheck += (r_c, &lhs_c);
+        ap.peek("lc gc");
 
+        let ap = poke(0, 0);
         matrix_sumcheck -=
             &LinearCombination::new("h_2", [(largest_non_zero_domain.evaluate_vanishing_polynomial(gamma), "h_2")]);
         // debug_assert!(evals.get_lc_eval(&matrix_sumcheck, gamma)?.is_zero());
+        ap.peek("matrix sum");
 
         linear_combinations.insert("g_a".into(), g_a);
         linear_combinations.insert("g_b".into(), g_b);
@@ -294,12 +332,15 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
             LinearCombination::new("a_poly_".to_string() + label, [(v_h_at_alpha_beta, "val_".to_string() + label)]);
         let alpha_beta = alpha * beta;
 
-        let mut b = LinearCombination::new("denom_".to_string() + label, [
-            (alpha_beta, LCTerm::One),
-            (-alpha, ("row_".to_string() + label).into()),
-            (-beta, ("col_".to_string() + label).into()),
-            (F::one(), ("row_col_".to_string() + label).into()),
-        ]);
+        let mut b = LinearCombination::new(
+            "denom_".to_string() + label,
+            [
+                (alpha_beta, LCTerm::One),
+                (-alpha, ("row_".to_string() + label).into()),
+                (-beta, ("col_".to_string() + label).into()),
+                (F::one(), ("row_col_".to_string() + label).into()),
+            ],
+        );
         b *= gamma * g_at_gamma + sum;
 
         let mut lhs = a;

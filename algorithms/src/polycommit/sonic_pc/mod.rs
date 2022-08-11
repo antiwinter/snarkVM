@@ -23,7 +23,7 @@ use hashbrown::HashMap;
 use itertools::Itertools;
 use snarkvm_curves::traits::{AffineCurve, PairingCurve, PairingEngine, ProjectiveCurve};
 use snarkvm_fields::{One, Zero};
-use snarkvm_utilities::antiprofiler::poke;
+use snarkvm_utilities::antiprofiler::{hint, peek, poke};
 
 use core::{
     convert::TryInto,
@@ -257,7 +257,7 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
                 ));
 
                 #[allow(clippy::or_fun_call)]
-                let (comm, rand) = p
+                let p0 = p
                     .sum()
                     .map(move |p| {
                         let rng_ref = rng.as_mut().map(|s| s as _);
@@ -291,12 +291,12 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
                         }
                     })
                     .collect::<Result<Vec<_>, _>>()?
-                    .into_iter()
-                    .fold((E::G1Projective::zero(), Randomness::empty()), |mut a, b| {
-                        a.0.add_assign_mixed(&b.0 .0);
-                        a.1 += (E::Fr::one(), &b.1);
-                        a
-                    });
+                    .into_iter();
+                let (comm, rand) = p0.fold((E::G1Projective::zero(), Randomness::empty()), |mut a, b| {
+                    a.0.add_assign_mixed(&b.0 .0);
+                    a.1 += (E::Fr::one(), &b.1);
+                    a
+                });
                 let comm = kzg10::Commitment(comm.to_affine());
 
                 Ok((LabeledCommitment::new(label.to_string(), comm, degree_bound), rand))
@@ -333,8 +333,10 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
                 p,
             )
             .unwrap();
+
             let challenge = fs_rng.squeeze_short_nonnative_field_element().unwrap();
-            (challenge, p.polynomial().as_dense().unwrap(), r)
+            let x = (challenge, p.polynomial().as_dense().unwrap(), r);
+            x
         })))
     }
 
@@ -386,11 +388,15 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
                 query_rands.push(*rand);
                 query_comms.push(*comm);
             }
+
+            hint("oc: c4o");
             let (polynomial, rand) = Self::combine_for_open(ck, query_polys, query_rands, fs_rng)?;
+            hint("oc:");
 
             pool.add_job(move || {
                 let proof_time = start_timer!(|| "Creating proof");
                 let proof = kzg10::KZG10::open(&ck.powers(), &polynomial, query, &rand);
+
                 end_timer!(proof_time);
                 proof
             });
@@ -507,27 +513,37 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
                 let label: &String = label.try_into().expect("cannot be one!");
                 let &(cur_poly, cur_rand, cur_comm) =
                     label_map.get(label as &str).ok_or(PCError::MissingPolynomial { label: label.to_string() })?;
+
                 if num_polys == 1 && cur_poly.degree_bound().is_some() {
                     assert!(coeff.is_one(), "Coefficient must be one for degree-bounded equations");
                     degree_bound = cur_poly.degree_bound();
                 } else if cur_poly.degree_bound().is_some() {
                     return Err(PCError::EquationHasDegreeBounds(lc_label));
                 }
+
                 // Some(_) > None, always.
                 hiding_bound = core::cmp::max(hiding_bound, cur_poly.hiding_bound());
+
+                let ap = poke(0, 0);
                 poly += (*coeff, cur_poly.polynomial());
+                ap.peek("poly add");
+
                 randomness += (*coeff, cur_rand);
                 coeffs_and_comms.push((*coeff, cur_comm.commitment()));
             }
 
             let lc_poly = LabeledPolynomial::new(lc_label.clone(), poly, degree_bound, hiding_bound);
+
             lc_polynomials.push(lc_poly);
             lc_randomness.push(randomness);
             lc_commitments.push(Self::combine_commitments(coeffs_and_comms));
             lc_info.push((lc_label, degree_bound));
         }
 
+        let ap = poke(0, 0);
         let comms = Self::normalize_commitments(lc_commitments);
+        ap.peek("norm");
+
         let lc_commitments = lc_info
             .into_iter()
             .zip_eq(comms)
@@ -622,6 +638,8 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
     ) -> (DensePolynomial<E::Fr>, Randomness<E>) {
         let mut combined_poly = DensePolynomial::zero();
         let mut combined_rand = Randomness::empty();
+
+        let ap = poke(0, 0);
         for (coeff, poly, rand) in coeffs_polys_rands {
             if coeff.is_one() {
                 combined_poly += poly;
@@ -631,6 +649,7 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
                 combined_rand += (coeff, rand);
             }
         }
+        ap.peek("combine_poly");
         (combined_poly, combined_rand)
     }
 

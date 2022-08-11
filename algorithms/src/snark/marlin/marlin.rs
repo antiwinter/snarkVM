@@ -33,7 +33,7 @@ use snarkvm_curves::PairingEngine;
 use snarkvm_fields::{One, PrimeField, ToConstraintField, Zero};
 use snarkvm_r1cs::ConstraintSynthesizer;
 use snarkvm_utilities::{
-    antiprofiler::{hint, poke},
+    antiprofiler::{hint, peek, poke},
     to_bytes_le, ToBytes,
 };
 
@@ -455,14 +455,15 @@ where
         )?;
         end_timer!(fourth_round_comm_time);
 
+        let ap = poke(0, 0);
         Self::absorb_labeled(&fourth_commitments, &mut sponge);
+        ap.peek("chacha absorb");
 
         let verifier_state = AHPForR1CS::<_, MM>::verifier_fourth_round(verifier_state, &mut sponge)?;
         // --------------------------------------------------------------------
 
         Self::terminate(terminator)?;
 
-        hint("gather");
         // Gather prover polynomials in one vector.
         let polynomials: Vec<_> = circuit_proving_key
             .circuit
@@ -501,7 +502,6 @@ where
             h_2: *fourth_commitments[0].commitment(),
         };
 
-        hint("zip cmt");
         let labeled_commitments: Vec<_> = circuit_proving_key
             .circuit_verifying_key
             .iter()
@@ -531,8 +531,8 @@ where
         }
 
         // Compute the AHP verifier's query set.
-        hint("qs");
         let (query_set, verifier_state) = AHPForR1CS::<_, MM>::verifier_query_set(verifier_state);
+        hint("lc:");
         let lc_s = AHPForR1CS::<_, MM>::construct_linear_combinations(
             &public_input,
             &polynomials,
@@ -542,13 +542,15 @@ where
 
         Self::terminate(terminator)?;
 
-        hint("lc");
         let eval_time = start_timer!(|| "Evaluating linear combinations over query set");
         let mut evaluations = std::collections::BTreeMap::new();
         for (label, (_, point)) in query_set.to_set() {
             if !AHPForR1CS::<E::Fr, MM>::LC_WITH_ZERO_EVAL.contains(&label.as_str()) {
                 let lc = lc_s.get(&label).ok_or_else(|| AHPError::MissingEval(label.to_string()))?;
+                let ap = poke(0, 0);
                 let evaluation = polynomials.get_lc_eval(lc, point)?;
+                ap.peek("lc eval");
+
                 evaluations.insert(label, evaluation);
             }
         }
@@ -577,6 +579,8 @@ where
         let proof = Proof::<E>::new(batch_size, commitments, evaluations, prover_third_message, pc_proof);
         assert_eq!(proof.pc_proof.is_hiding(), MM::ZK);
         end_timer!(prover_time);
+
+        peek("done");
 
         Ok(proof)
     }
