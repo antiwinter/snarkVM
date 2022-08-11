@@ -21,20 +21,20 @@ use crate::{
     fft::{
         domain::{FFTPrecomputation, IFFTPrecomputation},
         polynomial::PolyMultiplier,
-        DensePolynomial,
-        EvaluationDomain,
-        Evaluations as EvaluationsOnDomain,
+        DensePolynomial, EvaluationDomain, Evaluations as EvaluationsOnDomain,
     },
     polycommit::sonic_pc::{LabeledPolynomial, PolynomialInfo, PolynomialLabel},
     snark::marlin::{
         ahp::{indexer::CircuitInfo, verifier, AHPError, AHPForR1CS},
         matrices::MatrixArithmetization,
-        prover,
-        MarlinMode,
+        prover, MarlinMode,
     },
 };
 use snarkvm_fields::{batch_inversion_and_mul, PrimeField};
-use snarkvm_utilities::{cfg_iter, cfg_iter_mut, ExecutionPool};
+use snarkvm_utilities::{
+    antiprofiler::{peek, poke},
+    cfg_iter, cfg_iter_mut, ExecutionPool,
+};
 
 use rand_core::RngCore;
 
@@ -159,9 +159,11 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         job_pool.add_job(|| {
             let a_poly_time = start_timer!(|| "Computing a poly");
             let a_poly = {
+                let ap = poke(arithmetization.val.as_dense().unwrap().coeffs().len(), 1);
                 let coeffs = cfg_iter!(arithmetization.val.as_dense().unwrap().coeffs())
                     .map(|a| v_H_alpha_v_H_beta * a)
                     .collect();
+                ap.peek("arith_val_mul_ab");
                 DensePolynomial::from_coefficients_vec(coeffs)
             };
             end_timer!(a_poly_time);
@@ -175,11 +177,15 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
             let b_poly_time = start_timer!(|| "Computing b poly");
             let alpha_beta = alpha * beta;
             let b_poly = {
+                let ap =
+                    poke(row_on_K.evaluations.len() + col_on_K.evaluations.len() + row_col_on_K.evaluations.len(), 2);
                 let evals: Vec<F> = cfg_iter!(row_on_K.evaluations)
                     .zip_eq(&col_on_K.evaluations)
                     .zip_eq(&row_col_on_K.evaluations)
                     .map(|((r, c), r_c)| alpha_beta - alpha * r - beta * c + r_c)
                     .collect();
+                ap.peek("arith_rc");
+
                 EvaluationsOnDomain::from_vec_and_domain(evals, non_zero_domain)
                     .interpolate_with_pc(ifft_precomputation)
             };
@@ -189,13 +195,18 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         let [a_poly, b_poly]: [_; 2] = job_pool.execute_all().try_into().unwrap();
 
         let f_evals_time = start_timer!(|| "Computing f evals on K");
+        let ap = poke(0, 0);
         let mut inverses: Vec<_> = cfg_iter!(row_on_K.evaluations)
             .zip_eq(&col_on_K.evaluations)
             .map(|(r, c)| (beta - r) * (alpha - c))
             .collect();
         batch_inversion_and_mul(&mut inverses, &v_H_alpha_v_H_beta);
+        ap.peek("arith_inv");
 
+        let ap = poke(0, 0);
         cfg_iter_mut!(inverses).zip_eq(&arithmetization.evals_on_K.val.evaluations).for_each(|(inv, a)| *inv *= a);
+        ap.peek("arith_inv_mul_eok");
+
         let f_evals_on_K = inverses;
         end_timer!(f_evals_time);
 
@@ -204,6 +215,8 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
             .interpolate_with_pc(ifft_precomputation);
         end_timer!(f_poly_time);
         let g = DensePolynomial::from_coefficients_slice(&f.coeffs[1..]);
+
+        let ap = poke(0, 0);
         let h = &a_poly
             - &{
                 let mut multiplier = PolyMultiplier::new();
@@ -222,7 +235,8 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         // Substituting in s, we get that h * s / v_K_max = h / v_K * (K.size() / K_max.size());
         // That's what we're computing here.
         let (mut h, remainder) = h.divide_by_vanishing_poly(non_zero_domain).unwrap();
-        
+        ap.peek("ab mul div");
+
         // assert!(remainder.is_zero());
         let multiplier = non_zero_domain.size_as_field_element / largest_non_zero_domain_size;
         cfg_iter_mut!(h.coeffs).for_each(|c| *c *= multiplier);

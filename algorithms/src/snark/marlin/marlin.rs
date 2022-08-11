@@ -414,13 +414,14 @@ where
 
         // --------------------------------------------------------------------
         // Third round
-        hint("r3:");
+        hint("r3p:");
         Self::terminate(terminator)?;
 
         let (prover_third_message, third_oracles, prover_state) =
             AHPForR1CS::<_, MM>::prover_third_round(&verifier_second_msg, prover_state, zk_rng)?;
         Self::terminate(terminator)?;
 
+        hint("r3c:");
         let third_round_comm_time = start_timer!(|| "Committing to third round polys");
         let (third_commitments, third_commitment_randomnesses) = SonicKZG10::<E, FS>::commit_with_terminator(
             &circuit_proving_key.committer_key,
