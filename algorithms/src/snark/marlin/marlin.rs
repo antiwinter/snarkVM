@@ -389,12 +389,13 @@ where
 
         // --------------------------------------------------------------------
         // Second round
-        hint("r2:");
+        hint("r2p:");
         Self::terminate(terminator)?;
         let (second_oracles, prover_state) =
             AHPForR1CS::<_, MM>::prover_second_round(&verifier_first_message, prover_state, zk_rng);
         Self::terminate(terminator)?;
 
+        hint("r2c:");
         let second_round_comm_time = start_timer!(|| "Committing to second round polys");
         let (second_commitments, second_commitment_randomnesses) = SonicKZG10::<E, FS>::commit_with_terminator(
             &circuit_proving_key.committer_key,

@@ -123,6 +123,28 @@ pub fn poke(f: usize, v: usize) -> Ap {
     ap
 }
 
+pub fn peek(msg: &str) {
+    let d = timer.lock().unwrap();
+
+    let u = if !d.contains_key("gtimer") { 0 } else { d["gtimer"].elapsed().as_millis() };
+    let g0 = d["g0"].elapsed().as_millis();
+    let u_mac = get(2) - get(1);
+    let mut h = header.lock().unwrap().clone();
+
+    h.push_str(msg);
+    println!(
+        "{:6} {:25} SEC +{:-4} MAC +{:-6}", //
+        th(g0),
+        &h,
+        th(u),
+        hum(u_mac),
+    );
+
+    // counter[1].store(get(2), Ordering::Relaxed);
+    // *d.entry("gtimer".into()).or_insert(t) = t;
+    // h.clear();
+}
+
 impl Ap {
     pub fn peek(&self, msg: &str) {
         let mut d = timer.lock().unwrap();

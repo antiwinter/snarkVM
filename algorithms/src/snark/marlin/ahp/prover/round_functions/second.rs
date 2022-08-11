@@ -32,7 +32,10 @@ use crate::{
     },
 };
 use snarkvm_fields::PrimeField;
-use snarkvm_utilities::{antiprofiler::poke, cfg_iter, cfg_iter_mut, ExecutionPool};
+use snarkvm_utilities::{
+    antiprofiler::{peek, poke},
+    cfg_iter, cfg_iter_mut, ExecutionPool,
+};
 
 use itertools::Itertools;
 use rand_core::RngCore;
@@ -73,6 +76,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
 
         let (summed_z_m, t) = Self::calculate_summed_z_m_and_t(&state, *alpha, *eta_b, *eta_c, batch_combiners);
 
+        let ap = poke(0, 0);
         let z_time = start_timer!(|| "Compute z poly");
         let z = cfg_iter!(state.first_round_oracles.as_ref().unwrap().batches)
             .zip_eq(batch_combiners)
@@ -85,6 +89,8 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                 z
             })
             .sum::<DensePolynomial<F>>();
+
+        ap.peek("z+x");
         assert!(z.degree() <= constraint_domain.size());
 
         end_timer!(z_time);
@@ -97,9 +103,15 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
             .into_iter()
             .sum::<F>()
             .is_zero());
+        // peek(&format!("{}{}", file!(), line!()));
 
         let sumcheck_time = start_timer!(|| "divide_by_vanishing_poly");
+
+        let ap = poke(0, sumcheck_lhs.coeffs.len());
         let (h_1, x_g_1) = sumcheck_lhs.divide_by_vanishing_poly(constraint_domain).unwrap();
+        // peek(&format!("{}{}", file!(), line!()));
+        ap.peek("div poly");
+
         let g_1 = DensePolynomial::from_coefficients_slice(&x_g_1.coeffs[1..]);
         drop(x_g_1);
         end_timer!(sumcheck_time);
@@ -129,23 +141,34 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         let constraint_domain = state.constraint_domain;
         let q_1_time = start_timer!(|| "Compute LHS of sumcheck");
 
+        // peek(&format!("{}{}", file!(), line!()));
         let mask_poly = state.first_round_oracles.as_ref().unwrap().mask_poly.as_ref();
         assert_eq!(MM::ZK, mask_poly.is_some());
 
         let mul_domain_size = (constraint_domain.size() + summed_z_m.coeffs.len()).max(t.coeffs.len() + z.len());
+
+        let ap = poke(0, 0);
         let mul_domain =
             EvaluationDomain::new(mul_domain_size).expect("field is not smooth enough to construct domain");
+        ap.peek("domain mul");
         let mut multiplier = PolyMultiplier::new();
         multiplier.add_precomputation(state.fft_precomputation(), state.ifft_precomputation());
         multiplier.add_polynomial(summed_z_m, "summed_z_m");
         multiplier.add_polynomial(z, "z");
         multiplier.add_polynomial(t, "t");
         let r_alpha_x_evals = {
+            let ap = poke(0, 0);
             let r_alpha_x_evals = constraint_domain
                 .batch_eval_unnormalized_bivariate_lagrange_poly_with_diff_inputs_over_domain(alpha, &mul_domain);
-            fft::Evaluations::from_vec_and_domain(r_alpha_x_evals, mul_domain)
+            ap.peek("eval alpha");
+
+            let ap = poke(0, 0);
+            let p = fft::Evaluations::from_vec_and_domain(r_alpha_x_evals, mul_domain);
+            ap.peek("evals to fft");
+            p
         };
         multiplier.add_evaluation(r_alpha_x_evals, "r_alpha_x");
+
         let mut lhs = multiplier
             .element_wise_arithmetic_4_over_domain(mul_domain, ["r_alpha_x", "summed_z_m", "z", "t"], |a, b, c, d| {
                 a * b - c * d
@@ -153,6 +176,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
             .unwrap();
 
         lhs += &mask_poly.map_or(SparsePolynomial::zero(), |p| p.polynomial().as_sparse().unwrap().clone());
+        // peek(&format!("{}{}", file!(), line!()));
         end_timer!(q_1_time);
         lhs
     }

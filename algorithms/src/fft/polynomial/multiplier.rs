@@ -145,7 +145,7 @@ impl<'a, F: PrimeField> PolyMultiplier<'a, F> {
                 let mut p = p.to_owned().into_owned().coeffs;
                 p.resize(domain.size(), F::zero());
 
-                let ap = poke(0, 0);
+                let ap = poke(0, p.len());
                 domain.out_order_fft_in_place_with_pc(&mut p, fft_pc);
                 ap.peek("fft x");
 
