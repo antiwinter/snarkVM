@@ -123,8 +123,8 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
             g_1: LabeledPolynomial::new("g_1".into(), g_1, Some(constraint_domain.size() - 2), zk_bound),
             h_1: LabeledPolynomial::new("h_1".into(), h_1, None, None),
         };
-        assert!(oracles.matches_info(&Self::second_round_polynomial_info(&state.index.index_info)));
 
+        assert!(oracles.matches_info(&Self::second_round_polynomial_info(&state.index.index_info)));
         state.verifier_first_message = Some(verifier_message.clone());
         end_timer!(round_time);
 

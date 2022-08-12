@@ -22,8 +22,7 @@ use crate::{
         ahp::{
             indexer::CircuitInfo,
             verifier::{FirstMessage, QuerySet, SecondMessage, State, ThirdMessage},
-            AHPError,
-            AHPForR1CS,
+            AHPError, AHPForR1CS,
         },
         params::OptimizationType,
         traits::FiatShamirRng,
@@ -31,6 +30,7 @@ use crate::{
     },
 };
 use snarkvm_fields::PrimeField;
+use snarkvm_utilities::antiprofiler::{peek, poke};
 
 impl<TargetField: PrimeField, MM: MarlinMode> AHPForR1CS<TargetField, MM> {
     /// Output the first message and next round state.
@@ -87,7 +87,9 @@ impl<TargetField: PrimeField, MM: MarlinMode> AHPForR1CS<TargetField, MM> {
     ) -> Result<(SecondMessage<TargetField>, State<TargetField, MM>), AHPError> {
         let elems = fs_rng.squeeze_nonnative_field_elements(1, OptimizationType::Weight)?;
         let beta = elems[0];
+        let ap = poke(0, 0);
         assert!(!state.constraint_domain.evaluate_vanishing_polynomial(beta).is_zero());
+        ap.peek("eval vanish");
 
         let message = SecondMessage { beta };
         state.second_round_message = Some(message);

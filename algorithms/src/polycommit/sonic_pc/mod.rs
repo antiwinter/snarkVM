@@ -533,10 +533,13 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
             }
 
             let lc_poly = LabeledPolynomial::new(lc_label.clone(), poly, degree_bound, hiding_bound);
-
             lc_polynomials.push(lc_poly);
             lc_randomness.push(randomness);
+
+            let ap = poke(0, 0);
             lc_commitments.push(Self::combine_commitments(coeffs_and_comms));
+            ap.peek("combine_cmt");
+
             lc_info.push((lc_label, degree_bound));
         }
 

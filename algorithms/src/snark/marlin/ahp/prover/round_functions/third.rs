@@ -80,12 +80,17 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
 
         let beta = verifier_message.beta;
 
+        let ap = poke(0, 0);
         let v_H_at_alpha = state.constraint_domain.evaluate_vanishing_polynomial(*alpha);
         let v_H_at_beta = state.constraint_domain.evaluate_vanishing_polynomial(beta);
+        ap.peek("eval vanish");
 
         let v_H_alpha_v_H_beta = v_H_at_alpha * v_H_at_beta;
 
+        let ap = poke(0, 0);
         let largest_non_zero_domain_size = Self::max_non_zero_domain(&state.index.index_info).size_as_field_element;
+        ap.peek("new domain");
+
         let mut pool = ExecutionPool::with_capacity(3);
         pool.add_job(|| {
             Self::matrix_sumcheck_helper(

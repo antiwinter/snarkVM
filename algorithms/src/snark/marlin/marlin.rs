@@ -405,7 +405,10 @@ where
         )?;
         end_timer!(second_round_comm_time);
 
+        let ap = poke(0, 0);
         Self::absorb_labeled(&second_commitments, &mut sponge);
+        ap.peek("chacha absorb");
+        
         Self::terminate(terminator)?;
 
         let (verifier_second_msg, verifier_state) =
@@ -431,7 +434,9 @@ where
         )?;
         end_timer!(third_round_comm_time);
 
+        let ap = poke(0, 0);
         Self::absorb_labeled_with_msg(&third_commitments, &prover_third_message, &mut sponge);
+        ap.peek("absorb");
 
         let (verifier_third_msg, verifier_state) =
             AHPForR1CS::<_, MM>::verifier_third_round(verifier_state, &mut sponge)?;
