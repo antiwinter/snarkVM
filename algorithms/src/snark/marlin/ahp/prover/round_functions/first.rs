@@ -160,7 +160,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         let ratio = constraint_domain.size() / input_domain.size();
         w_extended.resize(constraint_domain.size() - input_domain.size(), F::zero());
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         let x_evals = {
             let mut coeffs = x_poly.coeffs.clone();
             coeffs.resize(constraint_domain.size(), F::zero());
@@ -181,7 +181,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         let w_poly = EvaluationsOnDomain::from_vec_and_domain(w_poly_evals, constraint_domain)
             .interpolate_with_pc(state.ifft_precomputation());
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         let (w_poly, remainder) = w_poly.divide_by_vanishing_poly(input_domain).unwrap();
         ap.peek("w_poly div");
         assert!(remainder.is_zero());

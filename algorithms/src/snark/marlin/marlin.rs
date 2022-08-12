@@ -345,7 +345,7 @@ where
         let padded_public_input = prover_state.padded_public_inputs();
         assert_eq!(prover_state.batch_size, batch_size);
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         let mut sponge = Self::init_sponge(
             batch_size,
             &circuit_proving_key.circuit_verifying_key.circuit_commitments,
@@ -372,12 +372,11 @@ where
         };
         end_timer!(first_round_comm_time);
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         Self::absorb_labeled(&first_commitments, &mut sponge);
         ap.peek("chacha absorb");
         Self::terminate(terminator)?;
 
-        let ap = poke(0, 0);
         let (verifier_first_message, verifier_state) = AHPForR1CS::<_, MM>::verifier_first_round(
             circuit_proving_key.circuit_verifying_key.circuit_info,
             batch_size,
@@ -405,10 +404,10 @@ where
         )?;
         end_timer!(second_round_comm_time);
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         Self::absorb_labeled(&second_commitments, &mut sponge);
         ap.peek("chacha absorb");
-        
+
         Self::terminate(terminator)?;
 
         let (verifier_second_msg, verifier_state) =
@@ -434,7 +433,7 @@ where
         )?;
         end_timer!(third_round_comm_time);
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         Self::absorb_labeled_with_msg(&third_commitments, &prover_third_message, &mut sponge);
         ap.peek("absorb");
 
@@ -460,7 +459,7 @@ where
         )?;
         end_timer!(fourth_round_comm_time);
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         Self::absorb_labeled(&fourth_commitments, &mut sponge);
         ap.peek("chacha absorb");
 
@@ -552,7 +551,7 @@ where
         for (label, (_, point)) in query_set.to_set() {
             if !AHPForR1CS::<E::Fr, MM>::LC_WITH_ZERO_EVAL.contains(&label.as_str()) {
                 let lc = lc_s.get(&label).ok_or_else(|| AHPError::MissingEval(label.to_string()))?;
-                let ap = poke(0, 0);
+                let mut ap = poke();
                 let evaluation = polynomials.get_lc_eval(lc, point)?;
                 ap.peek("lc eval");
 

@@ -90,7 +90,7 @@ impl<N: Network> ConstraintSynthesizer<N::InnerScalarField> for PoSWCircuit<N> {
         // Note: This is *not* enforced in the circuit.
         assert_eq!(usize::pow(2, N::HEADER_TREE_DEPTH as u32), self.hashed_leaves.len());
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         let two_to_one_crh_parameters =
             N::BlockHeaderRootTwoToOneCRHGadget::alloc_constant(&mut cs.ns(|| "new_parameters"), || {
                 Ok(N::block_header_root_parameters().two_to_one_crh())
@@ -116,7 +116,7 @@ impl<N: Network> ConstraintSynthesizer<N::InnerScalarField> for PoSWCircuit<N> {
             || Ok(vec![*self.nonce]),
         )?;
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         let mask = <N::PoSWMaskPRFGadget as PRFGadget<N::PoSWMaskPRF, N::InnerScalarField>>::check_evaluation_gadget(
             &mut cs.ns(|| "Compute mask"),
             &block_header_root,
@@ -141,7 +141,7 @@ impl<N: Network> ConstraintSynthesizer<N::InnerScalarField> for PoSWCircuit<N> {
 
         // Compute the root using the masked tree.
 
-        let ap = poke(512, 1);
+        let mut ap = poke().set_var(512, 1);
         let candidate_root = compute_masked_root::<
             <N::BlockHeaderRootParameters as MerkleParameters>::TwoToOneCRH,
             N::BlockHeaderRootTwoToOneCRHGadget,

@@ -166,7 +166,7 @@ impl<F: FftField> EvaluationDomain<F> {
     pub fn fft<T: DomainCoeff<F>>(&self, coeffs: &[T]) -> Vec<T> {
         let mut coeffs = coeffs.to_vec();
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         self.fft_in_place(&mut coeffs);
         ap.peek(&format!("FFT {}", self.size()));
 

@@ -52,7 +52,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                 circuit.generate_constraints(&mut pcs)?;
                 end_timer!(constraint_time);
 
-                let ap = poke(0, 0);
+                let mut ap = poke();
                 let padding_time = start_timer!(|| "Padding matrices to make them square");
                 crate::snark::marlin::ahp::matrices::pad_input_for_indexer_and_prover(&mut pcs);
                 pcs.make_matrices_square();
@@ -99,7 +99,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                 for i in index.a.iter() {
                     ic += i.len();
                 }
-                let ap = poke(ic, padded_public_variables.len() + private_variables.len());
+                let mut ap = poke().set_var(ic, padded_public_variables.len() + private_variables.len());
 
                 let z_a = cfg_iter!(index.a)
                     .map(|row| {
@@ -116,7 +116,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                 for i in index.b.iter() {
                     ic += i.len();
                 }
-                let ap = poke(ic, padded_public_variables.len() + private_variables.len());
+                let mut ap = poke().set_var(ic, padded_public_variables.len() + private_variables.len());
 
                 let z_b = cfg_iter!(index.b)
                     .map(|row| inner_product(&padded_public_variables, &private_variables, row, num_public_variables))

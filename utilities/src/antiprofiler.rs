@@ -104,11 +104,13 @@ pub fn end(name: &str) {
     println!("  ^^ AP {}: {} ms", name, th(d[name].elapsed().as_millis()));
 }
 
+#[derive(Clone)]
 pub struct Ap {
     t: Instant,
     c: u64,
     fixed: usize,
     vars: usize,
+    op: String,
 }
 
 pub fn hint(_h: &str) {
@@ -118,8 +120,8 @@ pub fn hint(_h: &str) {
     h.push_str(" ");
 }
 
-pub fn poke(f: usize, v: usize) -> Ap {
-    let ap = Ap { t: Instant::now(), c: get(2), fixed: f, vars: v };
+pub fn poke() -> Ap {
+    let mut ap = Ap { t: Instant::now(), c: get(2), fixed: 0, vars: 0, op: "".into() };
     ap
 }
 
@@ -146,7 +148,7 @@ pub fn peek(msg: &str) {
 }
 
 impl Ap {
-    pub fn peek(&self, msg: &str) {
+    pub fn peek(&mut self, msg: &str) {
         let mut d = timer.lock().unwrap();
         let t = Instant::now();
 
@@ -176,5 +178,27 @@ impl Ap {
         counter[1].store(get(2), Ordering::Relaxed);
         *d.entry("gtimer".into()).or_insert(t) = t;
         // h.clear();
+
+        self.reset();
+    }
+    pub fn set_var(mut self, f: usize, v: usize) -> Self {
+        self.fixed = f;
+        self.vars = v;
+        self
+    }
+    pub fn set_op(mut self, s: &str) -> Self {
+        self.op.clear();
+        self.op.push_str(s);
+        self
+    }
+    pub fn reset(&mut self) {
+        self.t = Instant::now();
+        self.c = get(2);
+        self.fixed = 0;
+        self.vars = 0;
+        self.op.clear()
+    }
+    pub fn new() -> Self {
+        Self { t: Instant::now(), c: get(2), fixed: 0, vars: 0, op: "".into() }
     }
 }

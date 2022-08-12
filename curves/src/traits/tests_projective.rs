@@ -35,10 +35,10 @@ fn random_addition_test<G: ProjectiveCurve>() {
 
         // a + a should equal the doubling
         {
-            let mut aplusa = a;
+            let aplusa = a;
             aplusa.add_assign(a);
 
-            let mut aplusamixed = a;
+            let aplusamixed = a;
             aplusamixed.add_assign_mixed(&a.to_affine());
 
             let mut adouble = a;

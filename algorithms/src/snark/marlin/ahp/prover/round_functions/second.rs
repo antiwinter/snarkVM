@@ -76,7 +76,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
 
         let (summed_z_m, t) = Self::calculate_summed_z_m_and_t(&state, *alpha, *eta_b, *eta_c, batch_combiners);
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         let z_time = start_timer!(|| "Compute z poly");
         let z = cfg_iter!(state.first_round_oracles.as_ref().unwrap().batches)
             .zip_eq(batch_combiners)
@@ -107,7 +107,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
 
         let sumcheck_time = start_timer!(|| "divide_by_vanishing_poly");
 
-        let ap = poke(0, sumcheck_lhs.coeffs.len());
+        let mut ap = poke().set_var(0, sumcheck_lhs.coeffs.len());
         let (h_1, x_g_1) = sumcheck_lhs.divide_by_vanishing_poly(constraint_domain).unwrap();
         // peek(&format!("{}{}", file!(), line!()));
         ap.peek("div poly");
@@ -147,7 +147,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
 
         let mul_domain_size = (constraint_domain.size() + summed_z_m.coeffs.len()).max(t.coeffs.len() + z.len());
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         let mul_domain =
             EvaluationDomain::new(mul_domain_size).expect("field is not smooth enough to construct domain");
         ap.peek("domain mul");
@@ -157,12 +157,11 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         multiplier.add_polynomial(z, "z");
         multiplier.add_polynomial(t, "t");
         let r_alpha_x_evals = {
-            let ap = poke(0, 0);
+            let mut ap = poke();
             let r_alpha_x_evals = constraint_domain
                 .batch_eval_unnormalized_bivariate_lagrange_poly_with_diff_inputs_over_domain(alpha, &mul_domain);
             ap.peek("eval alpha");
 
-            let ap = poke(0, 0);
             let p = fft::Evaluations::from_vec_and_domain(r_alpha_x_evals, mul_domain);
             ap.peek("evals to fft");
             p
@@ -214,7 +213,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                     // This is better since it reduces the number of required
                     // multiplications by `constraint_domain.size()`.
 
-                    let ap = poke(0, 0);
+                    let mut ap = poke();
                     let mut summed_z_m = {
                         // Mutate z_b in place to compute eta_c * z_b + 1
                         // This saves us an additional memory allocation.
@@ -246,7 +245,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         job_pool.add_job(|| {
             let t_poly_time = start_timer!(|| "Compute t poly");
 
-            let ap = poke(0, 0);
+            let mut ap = poke();
             let r_alpha_x_evals =
                 constraint_domain.batch_eval_unnormalized_bivariate_lagrange_poly_with_diff_inputs(alpha);
             ap.peek("r_evals");
@@ -276,7 +275,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
     ) -> DensePolynomial<F> {
         let mut t_evals_on_h = vec![F::zero(); constraint_domain.size()];
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         for (matrix, eta) in matrices.iter().zip_eq(matrix_randomizers) {
             for (r, row) in matrix.iter().enumerate() {
                 for (coeff, c) in row.iter() {

@@ -263,7 +263,7 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
                         let rng_ref = rng.as_mut().map(|s| s as _);
                         match p {
                             PolynomialWithBasis::Lagrange { evaluations } => {
-                                let ap = poke(0, 0);
+                                let mut ap = poke();
                                 let domain = crate::fft::EvaluationDomain::new(evaluations.evaluations.len()).unwrap();
                                 ap.peek("domain eval");
                                 let lagrange_basis = ck
@@ -524,7 +524,7 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
                 // Some(_) > None, always.
                 hiding_bound = core::cmp::max(hiding_bound, cur_poly.hiding_bound());
 
-                let ap = poke(0, 0);
+                let mut ap = poke();
                 poly += (*coeff, cur_poly.polynomial());
                 ap.peek("poly add");
 
@@ -536,14 +536,14 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
             lc_polynomials.push(lc_poly);
             lc_randomness.push(randomness);
 
-            let ap = poke(0, 0);
+            let mut ap = poke();
             lc_commitments.push(Self::combine_commitments(coeffs_and_comms));
             ap.peek("combine_cmt");
 
             lc_info.push((lc_label, degree_bound));
         }
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         let comms = Self::normalize_commitments(lc_commitments);
         ap.peek("norm");
 
@@ -642,7 +642,7 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
         let mut combined_poly = DensePolynomial::zero();
         let mut combined_rand = Randomness::empty();
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         for (coeff, poly, rand) in coeffs_polys_rands {
             if coeff.is_one() {
                 combined_poly += poly;

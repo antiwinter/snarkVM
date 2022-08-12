@@ -145,7 +145,7 @@ impl<'a, F: PrimeField> PolyMultiplier<'a, F> {
                 let mut p = p.to_owned().into_owned().coeffs;
                 p.resize(domain.size(), F::zero());
 
-                let ap = poke(0, p.len());
+                let mut ap = poke().set_var(0, p.len());
                 domain.out_order_fft_in_place_with_pc(&mut p, fft_pc);
                 ap.peek("fft x");
 
@@ -163,7 +163,7 @@ impl<'a, F: PrimeField> PolyMultiplier<'a, F> {
         let p = pool.execute_all().into_iter().collect::<BTreeMap<_, _>>();
         assert_eq!(p.len(), 4);
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         let mut result = cfg_iter!(p[labels[0].borrow()])
             .zip(&p[labels[1].borrow()])
             .zip(&p[labels[2].borrow()])
@@ -174,7 +174,6 @@ impl<'a, F: PrimeField> PolyMultiplier<'a, F> {
 
         drop(p);
 
-        let ap = poke(0, 0);
         domain.out_order_ifft_in_place_with_pc(&mut result, &self.ifft_precomputation.unwrap());
         ap.peek("ifft oo");
 

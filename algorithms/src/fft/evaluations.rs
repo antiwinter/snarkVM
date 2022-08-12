@@ -54,7 +54,7 @@ impl<F: PrimeField> Evaluations<F> {
         let mut evals = self.evaluations.clone();
         evals.resize(self.domain.size(), F::zero());
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         self.domain.in_order_ifft_in_place_with_pc(&mut evals, pc);
         ap.peek(&format!("ifft od {}", self.domain.size()));
 
@@ -64,7 +64,7 @@ impl<F: PrimeField> Evaluations<F> {
     /// Interpolate a polynomial from a list of evaluations
     pub fn interpolate(self) -> DensePolynomial<F> {
         let Self { evaluations: mut evals, domain } = self;
-        let ap = poke(0, 0);
+        let mut ap = poke();
         domain.ifft_in_place(&mut evals);
         ap.peek(&format!("ifft {}", domain.size()));
 
@@ -76,7 +76,7 @@ impl<F: PrimeField> Evaluations<F> {
         let Self { evaluations: mut evals, domain } = self;
         evals.resize(self.domain.size(), F::zero());
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         domain.in_order_ifft_in_place_with_pc(&mut evals, pc);
         ap.peek(&format!("ifft pc {}", domain.size()));
 

@@ -38,7 +38,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         let verifier::ThirdMessage { r_b, r_c, .. } = verifier_message;
         let [mut lhs_a, mut lhs_b, mut lhs_c] = state.lhs_polynomials.unwrap();
 
-        let ap = poke(0, 0);
+        let mut ap = poke();
         lhs_b *= *r_b;
         lhs_c *= *r_c;
 
