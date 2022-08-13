@@ -22,7 +22,7 @@ use itertools::Itertools;
 use snarkvm_fields::PrimeField;
 use snarkvm_r1cs::ConstraintSynthesizer;
 
-use snarkvm_utilities::antiprofiler::{hint, poke};
+use snarkvm_utilities::antiprofiler::{hint, peek, poke};
 use snarkvm_utilities::cfg_iter;
 #[cfg(not(feature = "std"))]
 use snarkvm_utilities::println;
@@ -52,12 +52,10 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                 circuit.generate_constraints(&mut pcs)?;
                 end_timer!(constraint_time);
 
-                let mut ap = poke();
                 let padding_time = start_timer!(|| "Padding matrices to make them square");
                 crate::snark::marlin::ahp::matrices::pad_input_for_indexer_and_prover(&mut pcs);
                 pcs.make_matrices_square();
                 end_timer!(padding_time);
-                ap.peek("padding vars");
 
                 let num_non_zero_a = index.index_info.num_non_zero_a;
                 let num_non_zero_b = index.index_info.num_non_zero_b;

@@ -26,6 +26,8 @@ extern crate alloc;
 extern crate aleo_std;
 #[macro_use]
 extern crate thiserror;
+#[macro_use]
+extern crate snarkvm_utilities;
 
 pub use snarkvm_utilities::{cfg_chunks, cfg_chunks_mut, cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce};
 

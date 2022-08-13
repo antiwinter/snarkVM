@@ -33,11 +33,7 @@ use crate::{
 use snarkvm_fields::{batch_inversion, FftField, FftParameters, Field};
 #[cfg(feature = "parallel")]
 use snarkvm_utilities::max_available_threads;
-use snarkvm_utilities::{
-    antiprofiler::{self, poke},
-    execute_with_max_available_threads,
-    serialize::*,
-};
+use snarkvm_utilities::{antiprofiler::poke, execute_with_max_available_threads, serialize::*};
 
 use rand::Rng;
 use std::{borrow::Cow, fmt};
@@ -125,6 +121,7 @@ impl<F: FftField> EvaluationDomain<F> {
             return None;
         }
 
+        let mut ap = poke().set_var(0, 1);
         // Compute the generator for the multiplicative subgroup.
         // It should be the 2^(log_size_of_group) root of unity.
         let group_gen = F::get_root_of_unity(size as usize)?;
@@ -135,7 +132,7 @@ impl<F: FftField> EvaluationDomain<F> {
         let size_as_field_element = F::from(size);
         let size_inv = size_as_field_element.inverse()?;
 
-        Some(EvaluationDomain {
+        let o = Some(EvaluationDomain {
             size,
             log_size_of_group,
             size_as_field_element,
@@ -143,7 +140,11 @@ impl<F: FftField> EvaluationDomain<F> {
             group_gen,
             group_gen_inv: group_gen.inverse()?,
             generator_inv: F::multiplicative_generator().inverse()?,
-        })
+        });
+
+        // peek_fmt!(ap, "mkdomain {}", size);
+        ap.peek(&format!("mkdomain {}", size));
+        o
     }
 
     /// Return the size of a domain that is large enough for evaluations of a polynomial
@@ -166,9 +167,9 @@ impl<F: FftField> EvaluationDomain<F> {
     pub fn fft<T: DomainCoeff<F>>(&self, coeffs: &[T]) -> Vec<T> {
         let mut coeffs = coeffs.to_vec();
 
-        let mut ap = poke();
+        let mut ap = poke().set_var(0, self.size());
         self.fft_in_place(&mut coeffs);
-        ap.peek(&format!("FFT {}", self.size()));
+        ap.peek("FFT_IP_IO");
 
         coeffs
     }

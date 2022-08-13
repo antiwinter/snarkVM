@@ -95,26 +95,16 @@ impl<'a, F: PrimeField, MM: MarlinMode> State<'a, F, MM> {
     ) -> Result<Self, AHPError> {
         let index_info = &index.index_info;
 
-        let mut ap = poke();
         let constraint_domain =
             EvaluationDomain::new(index_info.num_constraints).ok_or(SynthesisError::PolynomialDegreeTooLarge)?;
-        ap.peek("domain cs");
-
         let non_zero_a_domain =
             EvaluationDomain::new(index_info.num_non_zero_a).ok_or(SynthesisError::PolynomialDegreeTooLarge)?;
-        ap.peek("domain a");
-
         let non_zero_b_domain =
             EvaluationDomain::new(index_info.num_non_zero_b).ok_or(SynthesisError::PolynomialDegreeTooLarge)?;
-        ap.peek("domain b");
-
         let non_zero_c_domain =
             EvaluationDomain::new(index_info.num_non_zero_c).ok_or(SynthesisError::PolynomialDegreeTooLarge)?;
-        ap.peek("domain c");
-
         let input_domain =
             EvaluationDomain::new(padded_public_input[0].len()).ok_or(SynthesisError::PolynomialDegreeTooLarge)?;
-        ap.peek("domain pub");
 
         antiprofiler::hint("_i: x_poly");
         let x_poly = padded_public_input

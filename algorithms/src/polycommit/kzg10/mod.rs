@@ -235,11 +235,11 @@ impl<E: PairingEngine> KZG10<E> {
 
         let mut commitment = match polynomial {
             Polynomial::Dense(polynomial) => {
-                let mut ap = poke();
+                let mut ap = poke().set_var(0, polynomial.coeffs.len());
                 let (num_leading_zeros, plain_coeffs) = skip_leading_zeros_and_convert_to_bigints(polynomial);
+                ap.peek("to_repr");
 
                 let msm_time = start_timer!(|| "MSM to compute commitment to plaintext poly");
-                ap.peek("to bi");
                 let commitment = VariableBase::msm(&powers.powers_of_beta_g[num_leading_zeros..], &plain_coeffs);
                 end_timer!(msm_time);
 
@@ -314,7 +314,7 @@ impl<E: PairingEngine> KZG10<E> {
 
         let mut ap = poke().set_var(0, evaluations.len());
         let evaluations = evaluations.iter().map(|e| e.to_repr()).collect::<Vec<_>>();
-        ap.peek("eval to repr");
+        ap.peek("to_repr");
         let msm_time = start_timer!(|| "MSM to compute commitment to plaintext poly");
         let mut commitment = VariableBase::msm(&lagrange_basis.lagrange_basis_at_beta_g, &evaluations);
         end_timer!(msm_time);
@@ -370,7 +370,9 @@ impl<E: PairingEngine> KZG10<E> {
         let divisor = DensePolynomial::from_coefficients_vec(vec![-point, E::Fr::one()]);
 
         let witness_time = start_timer!(|| "Computing witness polynomial");
+        let mut ap = poke();
         let witness_polynomial = polynomial / &divisor;
+        ap.peek("pl div");
         end_timer!(witness_time);
 
         let random_witness_polynomial = if randomness.is_hiding() {
@@ -395,9 +397,9 @@ impl<E: PairingEngine> KZG10<E> {
         hiding_witness_polynomial: Option<&DensePolynomial<E::Fr>>,
     ) -> Result<Proof<E>, PCError> {
         Self::check_degree_is_too_large(witness_polynomial.degree(), powers.size())?;
-        let mut ap = poke();
+        let mut ap = poke().set_var(0, witness_polynomial.coeffs.len());
         let (num_leading_zeros, witness_coeffs) = skip_leading_zeros_and_convert_to_bigints(witness_polynomial);
-        ap.peek("to bi");
+        ap.peek("to_repr");
 
         let witness_comm_time = start_timer!(|| "Computing commitment to witness polynomial");
         let mut w = VariableBase::msm(&powers.powers_of_beta_g[num_leading_zeros..], &witness_coeffs);
@@ -432,9 +434,7 @@ impl<E: PairingEngine> KZG10<E> {
         let open_time = start_timer!(|| format!("Opening polynomial of degree {}", polynomial.degree()));
 
         let witness_time = start_timer!(|| "Computing witness polynomials");
-        let mut ap = poke();
         let (witness_poly, hiding_witness_poly) = Self::compute_witness_polynomial(polynomial, point, rand)?;
-        ap.peek("compute witness");
         end_timer!(witness_time);
 
         let proof =

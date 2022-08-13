@@ -105,6 +105,7 @@ pub fn end(name: &str) {
 }
 
 #[derive(Clone)]
+
 pub struct Ap {
     t: Instant,
     c: u64,
@@ -147,6 +148,13 @@ pub fn peek(msg: &str) {
     // h.clear();
 }
 
+#[macro_export]
+macro_rules! peek_fmt {
+    ($ap: expr, $($args:tt),*) => {{
+       $ap.peek(&format!($($args),*));
+    }};
+}
+
 impl Ap {
     pub fn peek(&mut self, msg: &str) {
         let mut d = timer.lock().unwrap();
@@ -164,13 +172,15 @@ impl Ap {
         let mut h = header.lock().unwrap().clone();
         h.push_str(msg);
         println!(
-            "{:6} {:25} {:5} +{:-4} MAC {:6} +{:-6} f:{:6}  v:{:6}", //
+            "{:6} {:48} {:5} {}{:-4} MAC {:6} {}{:-6} f:{:6}  v:{:6}", //
             th(g0),
             &h,
             th(c),
-            th(u - c),
+            if u > c { "+" } else { "-" },
+            th(if u > c { u - c } else { c - u }),
             hum(mac),
-            hum(u_mac - mac),
+            if u > c { "+" } else { "-" },
+            hum(if u_mac > mac { u_mac - mac } else { mac - u_mac }),
             self.fixed,
             self.vars
         );

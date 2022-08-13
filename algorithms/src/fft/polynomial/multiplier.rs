@@ -147,7 +147,7 @@ impl<'a, F: PrimeField> PolyMultiplier<'a, F> {
 
                 let mut ap = poke().set_var(0, p.len());
                 domain.out_order_fft_in_place_with_pc(&mut p, fft_pc);
-                ap.peek("fft x");
+                peek_fmt!(ap, "FFT_IP_OO {}", l);
 
                 (l, p)
             })
@@ -163,7 +163,13 @@ impl<'a, F: PrimeField> PolyMultiplier<'a, F> {
         let p = pool.execute_all().into_iter().collect::<BTreeMap<_, _>>();
         assert_eq!(p.len(), 4);
 
-        let mut ap = poke();
+        let mut ap = poke().set_var(
+            0,
+            p[labels[0].borrow()].len()
+                + p[labels[1].borrow()].len()
+                + p[labels[2].borrow()].len()
+                + p[labels[3].borrow()].len(),
+        );
         let mut result = cfg_iter!(p[labels[0].borrow()])
             .zip(&p[labels[1].borrow()])
             .zip(&p[labels[2].borrow()])
@@ -174,8 +180,9 @@ impl<'a, F: PrimeField> PolyMultiplier<'a, F> {
 
         drop(p);
 
+        let mut ap = poke().set_var(0, result.len());
         domain.out_order_ifft_in_place_with_pc(&mut result, &self.ifft_precomputation.unwrap());
-        ap.peek("ifft oo");
+        ap.peek("IFFT_IP_OO");
 
         Some(DensePolynomial::from_coefficients_vec(result))
     }

@@ -263,9 +263,7 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
                         let rng_ref = rng.as_mut().map(|s| s as _);
                         match p {
                             PolynomialWithBasis::Lagrange { evaluations } => {
-                                let mut ap = poke();
                                 let domain = crate::fft::EvaluationDomain::new(evaluations.evaluations.len()).unwrap();
-                                ap.peek("domain eval");
                                 let lagrange_basis = ck
                                     .lagrange_basis(domain)
                                     .ok_or(PCError::UnsupportedLagrangeBasisSize(domain.size()))?;
@@ -524,7 +522,8 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
                 // Some(_) > None, always.
                 hiding_bound = core::cmp::max(hiding_bound, cur_poly.hiding_bound());
 
-                let mut ap = poke();
+                let mut ap = poke().set_var(0, poly.coeffs.len());
+                let x = cur_poly.polynomial();
                 poly += (*coeff, cur_poly.polynomial());
                 ap.peek("poly add");
 
