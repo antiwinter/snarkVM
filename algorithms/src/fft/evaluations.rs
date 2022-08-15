@@ -54,9 +54,11 @@ impl<F: PrimeField> Evaluations<F> {
         let mut evals = self.evaluations.clone();
         evals.resize(self.domain.size(), F::zero());
 
-        let mut ap = poke().set_var(0, evals.len());
+        let mut ap = poke();
         self.domain.in_order_ifft_in_place_with_pc(&mut evals, pc);
-        ap.peek("IFFT_IP_IO_PCr");
+        ap //
+            .set_dynmc("evals", "[F256]", evals.len())
+            .peek("IFFT_IP_IO_PCr");
 
         DensePolynomial::from_coefficients_vec(evals)
     }
@@ -64,9 +66,11 @@ impl<F: PrimeField> Evaluations<F> {
     /// Interpolate a polynomial from a list of evaluations
     pub fn interpolate(self) -> DensePolynomial<F> {
         let Self { evaluations: mut evals, domain } = self;
-        let mut ap = poke().set_var(0, evals.len());
+        let mut ap = poke();
         domain.ifft_in_place(&mut evals);
-        ap.peek("IFFT_IP_IO");
+        ap //
+            .set_dynmc("evals", "[F256]", evals.len())
+            .peek("IFFT_IP_IO");
 
         DensePolynomial::from_coefficients_vec(evals)
     }
@@ -76,9 +80,11 @@ impl<F: PrimeField> Evaluations<F> {
         let Self { evaluations: mut evals, domain } = self;
         evals.resize(self.domain.size(), F::zero());
 
-        let mut ap = poke().set_var(0, evals.len());
+        let mut ap = poke();
         domain.in_order_ifft_in_place_with_pc(&mut evals, pc);
-        ap.peek("IFFT_IP_IO_PC");
+        ap //
+            .set_dynmc("evals", "[F256]", evals.len())
+            .peek("IFFT_IP_IO_PC");
 
         DensePolynomial::from_coefficients_vec(evals)
     }

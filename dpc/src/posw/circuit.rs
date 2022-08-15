@@ -141,7 +141,7 @@ impl<N: Network> ConstraintSynthesizer<N::InnerScalarField> for PoSWCircuit<N> {
 
         // Compute the root using the masked tree.
 
-        let mut ap = poke().set_var(512, 1);
+        let mut ap = poke();
         let candidate_root = compute_masked_root::<
             <N::BlockHeaderRootParameters as MerkleParameters>::TwoToOneCRH,
             N::BlockHeaderRootTwoToOneCRHGadget,
@@ -156,7 +156,10 @@ impl<N: Network> ConstraintSynthesizer<N::InnerScalarField> for PoSWCircuit<N> {
             &hashed_leaf_gadgets,
         )?;
 
-        ap.peek("3r msm G256");
+        ap //
+        .set_const("crh", "[G256]", 512)
+        .set_dynmc("leaf", "[F256]", 4)
+        .peek("3r msm");
 
         // Enforce the input root is the same as the computed root.
         candidate_root.enforce_equal(cs.ns(|| "enforce equal"), &block_header_root)?;

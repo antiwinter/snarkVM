@@ -43,7 +43,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
     ) -> Result<prover::State<'a, F, MM>, AHPError> {
         let init_time = start_timer!(|| "AHP::Prover::Init");
 
-        hint("_i:");
+        hint("init");
         // Perform matrix multiplications.
         let (padded_public_variables, private_variables, z_a, z_b) = cfg_iter!(circuits)
             .map(|circuit| {
@@ -97,7 +97,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                 for i in index.a.iter() {
                     ic += i.len();
                 }
-                let mut ap = poke().set_var(ic, padded_public_variables.len() + private_variables.len());
+                let mut ap = poke();
 
                 let z_a = cfg_iter!(index.a)
                     .map(|row| {
@@ -106,7 +106,10 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                     })
                     .collect();
                 end_timer!(eval_z_a_time);
-                ap.peek("z_a . F256");
+                ap //
+                    .set_const("circuit.a", "[[F256]]", ic)
+                    .set_dynmc("vars", "[F256]", padded_public_variables.len() + private_variables.len())
+                    .peek("z_a . F256");
 
                 let eval_z_b_time = start_timer!(|| "Evaluating z_B");
 
@@ -114,13 +117,16 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                 for i in index.b.iter() {
                     ic += i.len();
                 }
-                let mut ap = poke().set_var(ic, padded_public_variables.len() + private_variables.len());
+                let mut ap = poke();
 
                 let z_b = cfg_iter!(index.b)
                     .map(|row| inner_product(&padded_public_variables, &private_variables, row, num_public_variables))
                     .collect();
 
-                ap.peek("z_b . F256");
+                ap //
+                    .set_const("circuit.b", "[[F256]]", ic)
+                    .set_dynmc("vars", "[F256]", padded_public_variables.len() + private_variables.len())
+                    .peek("z_b . F256");
 
                 end_timer!(eval_z_b_time);
                 end_timer!(init_time);

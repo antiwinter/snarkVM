@@ -177,13 +177,14 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
             })
             .collect();
 
-        hint("r1: w_poly");
+        ap.peek("w_evals=x2w(x_evals)");
         let w_poly = EvaluationsOnDomain::from_vec_and_domain(w_poly_evals, constraint_domain)
             .interpolate_with_pc(state.ifft_precomputation());
+        ap.peek("w_pl=IFFT(w_evals)");
 
         let mut ap = poke();
         let (w_poly, remainder) = w_poly.divide_by_vanishing_poly(input_domain).unwrap();
-        ap.peek("w_poly div");
+        ap.peek("w_pl /= vanish(domain_input)");
         assert!(remainder.is_zero());
 
         assert!(w_poly.degree() < constraint_domain.size() - input_domain.size());
@@ -210,12 +211,12 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
 
         let evals = EvaluationsOnDomain::from_vec_and_domain(evaluations, constraint_domain);
 
-        hint("r1: z_m");
+        let mut ap = poke();
         let mut poly = evals.interpolate_with_pc_by_ref(state.ifft_precomputation());
         if should_randomize {
             poly += &(&v_H * r.unwrap());
         }
-        hint("r1:");
+        peek_fmt!(ap, "{}=IFFT(evals)", label);
 
         debug_assert!(
             poly.evaluate_over_domain_by_ref(constraint_domain)

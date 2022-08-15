@@ -106,16 +106,17 @@ impl<'a, F: PrimeField, MM: MarlinMode> State<'a, F, MM> {
         let input_domain =
             EvaluationDomain::new(padded_public_input[0].len()).ok_or(SynthesisError::PolynomialDegreeTooLarge)?;
 
-        antiprofiler::hint("_i: x_poly");
+        let mut ap = poke();
         let x_poly = padded_public_input
             .iter()
             .map(|padded_public_input| {
                 EvaluationsOnDomain::from_vec_and_domain(padded_public_input.clone(), input_domain).interpolate()
             })
             .collect();
+        ap.set_dynmc("vars", "[F256]", padded_public_input.len()).peek("w=IFFT(vars)");
+
         let batch_size = private_variables.len();
         assert_eq!(padded_public_input.len(), batch_size);
-        hint("_i:");
 
         Ok(Self {
             index,

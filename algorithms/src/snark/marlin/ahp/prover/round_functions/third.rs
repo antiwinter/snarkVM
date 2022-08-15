@@ -88,7 +88,7 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         let v_H_alpha_v_H_beta = v_H_at_alpha * v_H_at_beta;
 
         let largest_non_zero_domain_size = Self::max_non_zero_domain(&state.index.index_info).size_as_field_element;
-        ap.peek("new domain");
+        ap.peek("domain nz");
 
         let mut pool = ExecutionPool::with_capacity(3);
         pool.add_job(|| {
@@ -163,11 +163,13 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         job_pool.add_job(|| {
             let a_poly_time = start_timer!(|| "Computing a poly");
             let a_poly = {
-                let mut ap = poke().set_var(arithmetization.val.as_dense().unwrap().coeffs().len(), 1);
+                let mut ap = poke();
                 let coeffs = cfg_iter!(arithmetization.val.as_dense().unwrap().coeffs())
                     .map(|a| v_H_alpha_v_H_beta * a)
                     .collect();
-                ap.peek("arith_val_mul_ab");
+                ap //
+                    .set_const("arith.var", "[F256]", arithmetization.val.as_dense().unwrap().coeffs().len())
+                    .peek("a:pl=[var]*v_H");
                 DensePolynomial::from_coefficients_vec(coeffs)
             };
             end_timer!(a_poly_time);
@@ -181,16 +183,18 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
             let b_poly_time = start_timer!(|| "Computing b poly");
             let alpha_beta = alpha * beta;
             let b_poly = {
-                let mut ap = poke().set_var(
-                    row_on_K.evaluations.len() + col_on_K.evaluations.len() + row_col_on_K.evaluations.len(),
-                    2,
-                );
+                let mut ap = poke();
                 let evals: Vec<F> = cfg_iter!(row_on_K.evaluations)
                     .zip_eq(&col_on_K.evaluations)
                     .zip_eq(&row_col_on_K.evaluations)
                     .map(|((r, c), r_c)| alpha_beta - alpha * r - beta * c + r_c)
                     .collect();
-                ap.peek("arith_rc");
+                ap //
+                    .set_const("arith.eok.r", "[F256]", row_on_K.evaluations.len())
+                    .set_const("arith.eok.c", "[F256]", col_on_K.evaluations.len())
+                    .set_const("arith.eok.rc", "[F256]", row_col_on_K.evaluations.len())
+                    .set_dynmc("alpha beta", "F256", 2)
+                    .peek("alpha*beta - alpha*r - beta*c + rc");
 
                 EvaluationsOnDomain::from_vec_and_domain(evals, non_zero_domain)
                     .interpolate_with_pc(ifft_precomputation)
@@ -207,10 +211,12 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
             .map(|(r, c)| (beta - r) * (alpha - c))
             .collect();
         batch_inversion_and_mul(&mut inverses, &v_H_alpha_v_H_beta);
-        ap.peek("arith_inv");
+        ap.peek("v_H / (beta - r[i]) * (alpha - c[i])");
 
         cfg_iter_mut!(inverses).zip_eq(&arithmetization.evals_on_K.val.evaluations).for_each(|(inv, a)| *inv *= a);
-        ap.peek("arith_inv_mul_eok");
+        ap //
+            .set_const("arith.eok.v", "[F256]", arithmetization.evals_on_K.val.evaluations.len())
+            .peek("arith_inv_mul_eok");
 
         let f_evals_on_K = inverses;
         end_timer!(f_evals_time);
@@ -243,10 +249,12 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         ap.peek("ab mul div");
 
         // assert!(remainder.is_zero());
-        let mut ap = poke().set_var(0, h.coeffs.len());
+        let mut ap = poke();
         let multiplier = non_zero_domain.size_as_field_element / largest_non_zero_domain_size;
         cfg_iter_mut!(h.coeffs).for_each(|c| *c *= multiplier);
-        ap.peek("mul coeffs");
+        ap //
+            .set_dynmc("h", "[F256]", h.coeffs.len())
+            .peek("mul coeffs");
 
         let g = LabeledPolynomial::new("g_".to_string() + label, g, Some(non_zero_domain.size() - 2), None);
 

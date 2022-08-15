@@ -257,6 +257,7 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
                 ));
 
                 #[allow(clippy::or_fun_call)]
+                let mut ap = poke();
                 let p0 = p
                     .sum()
                     .map(move |p| {
@@ -269,22 +270,28 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
                                     .ok_or(PCError::UnsupportedLagrangeBasisSize(domain.size()))?;
                                 assert!(domain.size().is_power_of_two());
                                 assert!(lagrange_basis.size().is_power_of_two());
-                                kzg10::KZG10::commit_lagrange(
+                                let c = kzg10::KZG10::commit_lagrange(
                                     &lagrange_basis,
                                     &evaluations.evaluations,
                                     hiding_bound,
                                     terminator,
                                     rng_ref,
-                                )
+                                );
+                                ap.peek("commit lag");
+                                c
                             }
                             PolynomialWithBasis::Monomial { polynomial, degree_bound } => {
+                                let mut x: String = "commit".into();
                                 let powers = if let Some(degree_bound) = degree_bound {
+                                    x.push_str("shited");
                                     ck.shifted_powers_of_beta_g(degree_bound).unwrap()
                                 } else {
                                     ck.powers()
                                 };
 
-                                kzg10::KZG10::commit(&powers, &polynomial, hiding_bound, terminator, rng_ref)
+                                let c = kzg10::KZG10::commit(&powers, &polynomial, hiding_bound, terminator, rng_ref);
+                                ap.peek(&x);
+                                c
                             }
                         }
                     })
@@ -389,7 +396,7 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
 
             hint("oc: c4o");
             let (polynomial, rand) = Self::combine_for_open(ck, query_polys, query_rands, fs_rng)?;
-            hint("oc:");
+            hint("oc");
 
             pool.add_job(move || {
                 let proof_time = start_timer!(|| "Creating proof");
@@ -522,10 +529,12 @@ impl<E: PairingEngine, S: FiatShamirRng<E::Fr, E::Fq>> SonicKZG10<E, S> {
                 // Some(_) > None, always.
                 hiding_bound = core::cmp::max(hiding_bound, cur_poly.hiding_bound());
 
-                let mut ap = poke().set_var(0, poly.coeffs.len());
+                let mut ap = poke();
                 let x = cur_poly.polynomial();
                 poly += (*coeff, cur_poly.polynomial());
-                ap.peek("poly add");
+                ap //
+                    .set_dynmc(label, "[F256]", poly.coeffs.len())
+                    .peek("poly add");
 
                 randomness += (*coeff, cur_rand);
                 coeffs_and_comms.push((*coeff, cur_comm.commitment()));

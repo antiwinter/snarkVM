@@ -356,12 +356,13 @@ where
         // --------------------------------------------------------------------
         // First round
 
-        hint("r1:");
+        hint("r1p");
         Self::terminate(terminator)?;
         let mut prover_state = AHPForR1CS::<_, MM>::prover_first_round(prover_state, zk_rng)?;
         Self::terminate(terminator)?;
 
         let first_round_comm_time = start_timer!(|| "Committing to first round polys");
+        hint("r1c");
         let (first_commitments, first_commitment_randomnesses) = {
             let first_round_oracles = Arc::get_mut(prover_state.first_round_oracles.as_mut().unwrap()).unwrap();
             SonicKZG10::<E, FS>::commit(
@@ -377,6 +378,7 @@ where
         ap.peek("chacha absorb");
         Self::terminate(terminator)?;
 
+        hint("r1v");
         let (verifier_first_message, verifier_state) = AHPForR1CS::<_, MM>::verifier_first_round(
             circuit_proving_key.circuit_verifying_key.circuit_info,
             batch_size,
@@ -387,13 +389,13 @@ where
 
         // --------------------------------------------------------------------
         // Second round
-        hint("r2p:");
+        hint("r2p");
         Self::terminate(terminator)?;
         let (second_oracles, prover_state) =
             AHPForR1CS::<_, MM>::prover_second_round(&verifier_first_message, prover_state, zk_rng);
         Self::terminate(terminator)?;
 
-        hint("r2c:");
+        hint("r2c");
         let second_round_comm_time = start_timer!(|| "Committing to second round polys");
         let (second_commitments, second_commitment_randomnesses) = SonicKZG10::<E, FS>::commit_with_terminator(
             &circuit_proving_key.committer_key,
@@ -415,14 +417,14 @@ where
 
         // --------------------------------------------------------------------
         // Third round
-        hint("r3p:");
+        hint("r3p");
         Self::terminate(terminator)?;
 
         let (prover_third_message, third_oracles, prover_state) =
             AHPForR1CS::<_, MM>::prover_third_round(&verifier_second_msg, prover_state, zk_rng)?;
         Self::terminate(terminator)?;
 
-        hint("r3c:");
+        hint("r3c");
         let third_round_comm_time = start_timer!(|| "Committing to third round polys");
         let (third_commitments, third_commitment_randomnesses) = SonicKZG10::<E, FS>::commit_with_terminator(
             &circuit_proving_key.committer_key,
@@ -442,13 +444,14 @@ where
 
         // --------------------------------------------------------------------
         // Fourth round
-        hint("r4:");
+        hint("r4p");
         Self::terminate(terminator)?;
 
         let first_round_oracles = Arc::clone(prover_state.first_round_oracles.as_ref().unwrap());
         let fourth_oracles = AHPForR1CS::<_, MM>::prover_fourth_round(&verifier_third_msg, prover_state, zk_rng)?;
         Self::terminate(terminator)?;
 
+        hint("r4c");
         let fourth_round_comm_time = start_timer!(|| "Committing to fourth round polys");
         let (fourth_commitments, fourth_commitment_randomnesses) = SonicKZG10::<E, FS>::commit_with_terminator(
             &circuit_proving_key.committer_key,
@@ -462,6 +465,7 @@ where
         Self::absorb_labeled(&fourth_commitments, &mut sponge);
         ap.peek("chacha absorb");
 
+        hint("r4v");
         let verifier_state = AHPForR1CS::<_, MM>::verifier_fourth_round(verifier_state, &mut sponge)?;
         // --------------------------------------------------------------------
 
@@ -535,7 +539,7 @@ where
 
         // Compute the AHP verifier's query set.
         let (query_set, verifier_state) = AHPForR1CS::<_, MM>::verifier_query_set(verifier_state);
-        hint("lc:");
+        hint("lc");
         let lc_s = AHPForR1CS::<_, MM>::construct_linear_combinations(
             &public_input,
             &polynomials,

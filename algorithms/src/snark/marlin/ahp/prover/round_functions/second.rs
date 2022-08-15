@@ -107,10 +107,12 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
 
         let sumcheck_time = start_timer!(|| "divide_by_vanishing_poly");
 
-        let mut ap = poke().set_var(0, sumcheck_lhs.coeffs.len());
+        let mut ap = poke();
         let (h_1, x_g_1) = sumcheck_lhs.divide_by_vanishing_poly(constraint_domain).unwrap();
         // peek(&format!("{}{}", file!(), line!()));
-        ap.peek("div poly");
+        ap //
+            .set_dynmc("sumed", "[F256]", sumcheck_lhs.coeffs.len())
+            .peek("div vanish");
 
         let g_1 = DensePolynomial::from_coefficients_slice(&x_g_1.coeffs[1..]);
         drop(x_g_1);
@@ -166,13 +168,11 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
         };
         multiplier.add_evaluation(r_alpha_x_evals, "r_alpha_x");
 
-        hint("r2p: a_i*b_i - c_i*d_i");
         let mut lhs = multiplier
             .element_wise_arithmetic_4_over_domain(mul_domain, ["r_alpha_x", "summed_z_m", "z", "t"], |a, b, c, d| {
                 a * b - c * d
             })
             .unwrap();
-        hint("r2p");
 
         lhs += &mask_poly.map_or(SparsePolynomial::zero(), |p| p.polynomial().as_sparse().unwrap().clone());
         // peek(&format!("{}{}", file!(), line!()));
@@ -213,12 +213,14 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                     // This is better since it reduces the number of required
                     // multiplications by `constraint_domain.size()`.
 
-                    let mut ap = poke().set_var(0, z_b.coeffs.len());
+                    let mut ap = poke();
                     let mut summed_z_m = {
                         // Mutate z_b in place to compute eta_c * z_b + 1
                         // This saves us an additional memory allocation.
                         cfg_iter_mut!(z_b.coeffs).for_each(|b| *b *= eta_c);
-                        ap.peek("z_b *= eta_c:F");
+                        ap //
+                            .set_dynmc("z_b", "[F256]", z_b.coeffs.len())
+                            .peek("z_b *= eta_c:F");
                         z_b.coeffs[0] += F::one();
                         let mut multiplier = PolyMultiplier::new();
                         multiplier.add_polynomial_ref(z_a, "z_a");
@@ -227,16 +229,23 @@ impl<F: PrimeField, MM: MarlinMode> AHPForR1CS<F, MM> {
                         let result = multiplier.multiply().unwrap();
                         // Start undoing in place mutation, by first subtracting the 1 that we added...
                         z_b.coeffs[0] -= F::one();
-                        ap.peek("z_a * z_b");
+                        ap //
+                            .set_dynmc("z_a", "[F256]", z_a.coeffs.len())
+                            .set_dynmc("z_b", "[F256]", z_b.coeffs.len())
+                            .peek("z_a * z_b");
                         result
                     };
                     // ... and then multiplying by eta_b/eta_c, instead of just eta_b.
                     cfg_iter_mut!(summed_z_m.coeffs).zip(&z_b.coeffs).for_each(|(c, b)| *c += eta_b_over_eta_c * b);
-                    ap.peek("z_m += eta_b / eta_c * z_b");
+                    ap //
+                        .set_dynmc("z_m", "[F256]", summed_z_m.coeffs.len())
+                        .peek("z_m += eta_b / eta_c * z_b");
 
                     // Multiply by linear combination coefficient.
                     cfg_iter_mut!(summed_z_m.coeffs).for_each(|c| *c *= *combiner);
-                    ap.peek("z_m *= comb:F");
+                    ap //
+                        .set_dynmc("z_m", "[F256]", summed_z_m.coeffs.len())
+                        .peek("z_m *= comb:F");
 
                     assert_eq!(summed_z_m.degree(), z_a.degree() + z_b.degree());
                     end_timer!(summed_z_m_poly_time);

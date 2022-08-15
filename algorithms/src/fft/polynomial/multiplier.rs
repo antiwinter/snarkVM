@@ -145,7 +145,8 @@ impl<'a, F: PrimeField> PolyMultiplier<'a, F> {
                 let mut p = p.to_owned().into_owned().coeffs;
                 p.resize(domain.size(), F::zero());
 
-                let mut ap = poke().set_var(0, p.len());
+                let mut ap = poke();
+                ap.set_dynmc(&l, "[F256]", p.len());
                 domain.out_order_fft_in_place_with_pc(&mut p, fft_pc);
                 peek_fmt!(ap, "FFT_IP_OO {}", l);
 
@@ -163,26 +164,26 @@ impl<'a, F: PrimeField> PolyMultiplier<'a, F> {
         let p = pool.execute_all().into_iter().collect::<BTreeMap<_, _>>();
         assert_eq!(p.len(), 4);
 
-        let mut ap = poke().set_var(
-            0,
-            p[labels[0].borrow()].len()
-                + p[labels[1].borrow()].len()
-                + p[labels[2].borrow()].len()
-                + p[labels[3].borrow()].len(),
-        );
+        let mut ap = poke();
+        ap //
+            .set_dynmc(labels[0].borrow(), "[F256]", p[labels[0].borrow()].len())
+            .set_dynmc(labels[1].borrow(), "[F256]", p[labels[1].borrow()].len())
+            .set_dynmc(labels[2].borrow(), "[F256]", p[labels[2].borrow()].len())
+            .set_dynmc(labels[3].borrow(), "[F256]", p[labels[3].borrow()].len());
+
         let mut result = cfg_iter!(p[labels[0].borrow()])
             .zip(&p[labels[1].borrow()])
             .zip(&p[labels[2].borrow()])
             .zip(&p[labels[3].borrow()])
             .map(|(((a, b), c), d)| f(*a, *b, *c, *d))
             .collect::<Vec<_>>();
-        ap.peek("4xx");
+        ap.peek("a*b - c*d");
 
         drop(p);
 
-        let mut ap = poke().set_var(0, result.len());
+        let mut ap = poke();
         domain.out_order_ifft_in_place_with_pc(&mut result, &self.ifft_precomputation.unwrap());
-        ap.peek("IFFT_IP_OO");
+        ap.set_dynmc("result", "[F256]", result.len()).peek("IFFT_IP_OO");
 
         Some(DensePolynomial::from_coefficients_vec(result))
     }

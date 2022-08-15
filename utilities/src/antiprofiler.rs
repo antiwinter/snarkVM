@@ -105,13 +105,18 @@ pub fn end(name: &str) {
 }
 
 #[derive(Clone)]
+struct Apvar {
+    shape: String,
+    len: usize,
+    dynamic: bool,
+}
 
+#[derive(Clone)]
 pub struct Ap {
     t: Instant,
     c: u64,
-    fixed: usize,
-    vars: usize,
     op: String,
+    vars: HashMap<String, Apvar>,
 }
 
 pub fn hint(_h: &str) {
@@ -122,7 +127,7 @@ pub fn hint(_h: &str) {
 }
 
 pub fn poke() -> Ap {
-    let mut ap = Ap { t: Instant::now(), c: get(2), fixed: 0, vars: 0, op: "".into() };
+    let mut ap = Ap { t: Instant::now(), c: get(2), op: "".into(), vars: HashMap::new() };
     ap
 }
 
@@ -170,20 +175,29 @@ impl Ap {
         let mac = get(2) - self.c;
 
         let mut h = header.lock().unwrap().clone();
-        h.push_str(msg);
         println!(
-            "{:6} {:48} {:5} {}{:-4} MAC {:6} {}{:-6} f:{:6}  v:{:6}", //
+            "\n{:>6} {:>5} {}{:4}  {:>6} {}{:6}  {:8}{:48}", //
             th(g0),
-            &h,
             th(c),
             if u > c { "+" } else { "-" },
             th(if u > c { u - c } else { c - u }),
             hum(mac),
             if u > c { "+" } else { "-" },
             hum(if u_mac > mac { u_mac - mac } else { mac - u_mac }),
-            self.fixed,
-            self.vars
+            &h,
+            msg,
         );
+
+        for (k, v) in self.vars.iter() {
+            let mut name: String = (if v.dynamic { "*" } else { "" }).into();
+            name.push_str(k);
+            name.push_str(": ");
+            name.push_str(&v.shape);
+            println!(
+                "{:50} {:>20} {}", //
+                "", name, v.len,
+            )
+        }
 
         counter[1].store(get(2), Ordering::Relaxed);
         *d.entry("gtimer".into()).or_insert(t) = t;
@@ -191,12 +205,17 @@ impl Ap {
 
         self.reset();
     }
-    pub fn set_var(mut self, f: usize, v: usize) -> Self {
-        self.fixed = f;
-        self.vars = v;
+    pub fn set_const(&mut self, name: &str, shape: &str, len: usize) -> &mut Self {
+        let v = Apvar { shape: shape.into(), len, dynamic: false };
+        self.vars.entry(name.into()).or_insert(v);
         self
     }
-    pub fn set_op(mut self, s: &str) -> Self {
+    pub fn set_dynmc(&mut self, name: &str, shape: &str, len: usize) -> &mut Self {
+        let v = Apvar { shape: shape.into(), len, dynamic: true };
+        self.vars.entry(name.into()).or_insert(v);
+        self
+    }
+    pub fn set_op(&mut self, s: &str) -> &mut Self {
         self.op.clear();
         self.op.push_str(s);
         self
@@ -204,11 +223,7 @@ impl Ap {
     pub fn reset(&mut self) {
         self.t = Instant::now();
         self.c = get(2);
-        self.fixed = 0;
-        self.vars = 0;
+        self.vars.clear();
         self.op.clear()
-    }
-    pub fn new() -> Self {
-        Self { t: Instant::now(), c: get(2), fixed: 0, vars: 0, op: "".into() }
     }
 }

@@ -121,7 +121,8 @@ impl<F: FftField> EvaluationDomain<F> {
             return None;
         }
 
-        let mut ap = poke().set_var(0, 1);
+        let mut ap = poke();
+        ap.set_dynmc("size", "u32", 1);
         // Compute the generator for the multiplicative subgroup.
         // It should be the 2^(log_size_of_group) root of unity.
         let group_gen = F::get_root_of_unity(size as usize)?;
@@ -167,9 +168,11 @@ impl<F: FftField> EvaluationDomain<F> {
     pub fn fft<T: DomainCoeff<F>>(&self, coeffs: &[T]) -> Vec<T> {
         let mut coeffs = coeffs.to_vec();
 
-        let mut ap = poke().set_var(0, self.size());
+        let mut ap = poke();
         self.fft_in_place(&mut coeffs);
-        ap.peek("FFT_IP_IO");
+        ap //
+            .set_dynmc("coeffs", "[F256]", coeffs.len())
+            .peek("FFT_IP_IO");
 
         coeffs
     }

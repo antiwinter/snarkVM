@@ -125,7 +125,7 @@ pub mod arithmetic {
     pub fn mac_with_carry(a: u64, b: u64, c: u64, carry: &mut u64) -> u64 {
         let tmp = (u128::from(a)) + u128::from(b) * u128::from(c) + u128::from(*carry);
 
-        antiprofiler::inc(2);
+        // antiprofiler::inc(2);
         *carry = (tmp >> 64) as u64;
 
         tmp as u64
