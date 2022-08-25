@@ -161,6 +161,48 @@ macro_rules! peek_fmt {
 }
 
 impl Ap {
+    #[cfg(feature = "csv")]
+    pub fn peek(&mut self, msg: &str) {
+        let mut d = timer.lock().unwrap();
+        let t = Instant::now();
+
+        let _ = *d.entry("g0".into()).or_insert(t);
+        let c = self.t.elapsed().as_millis();
+        let u = if !d.contains_key("gtimer") { c } else { d["gtimer"].elapsed().as_millis() };
+
+        let g0 = d["g0"].elapsed().as_millis();
+
+        let u_mac = get(2) - get(1);
+        let mac = get(2) - self.c;
+
+        let mut h = header.lock().unwrap().clone();
+        println!(
+            "{}, {}, {}, {}, {}", //
+            th(g0),
+            u,
+            u_mac,
+            &h,
+            msg,
+        );
+
+        // for (k, v) in self.vars.iter() {
+        //     let mut name: String = (if v.dynamic { "*" } else { "" }).into();
+        //     name.push_str(k);
+        //     name.push_str(": ");
+        //     name.push_str(&v.shape);
+        //     println!(
+        //         "{:50} {:>20} {}", //
+        //         "", name, v.len,
+        //     )
+        // }
+
+        counter[1].store(get(2), Ordering::Relaxed);
+        *d.entry("gtimer".into()).or_insert(t) = t;
+        // h.clear();
+
+        self.reset();
+    }
+    #[cfg(not(feature = "csv"))]
     pub fn peek(&mut self, msg: &str) {
         let mut d = timer.lock().unwrap();
         let t = Instant::now();

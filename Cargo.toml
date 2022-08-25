@@ -1,7 +1,7 @@
 [package]
 name = "snarkvm"
 version = "0.7.5"
-authors = [ "The Aleo Team <hello@aleo.org>" ]
+authors = ["The Aleo Team <hello@aleo.org>"]
 description = "A decentralized virtual machine"
 homepage = "https://aleo.org"
 repository = "https://github.com/AleoHQ/snarkVM"
@@ -10,10 +10,16 @@ keywords = [
   "cryptography",
   "blockchain",
   "decentralized",
-  "zero-knowledge"
+  "zero-knowledge",
 ]
-categories = [ "compilers", "cryptography", "mathematics", "wasm", "web-programming" ]
-include = [ "Cargo.toml", "snarkvm", "README.md", "LICENSE.md" ]
+categories = [
+  "compilers",
+  "cryptography",
+  "mathematics",
+  "wasm",
+  "web-programming",
+]
+include = ["Cargo.toml", "snarkvm", "README.md", "LICENSE.md"]
 license = "GPL-3.0"
 edition = "2021"
 
@@ -58,10 +64,10 @@ members = [
   "parameters",
   "r1cs",
   "utilities",
-  "utilities/derives", # excluded from [features], for internal use primarily
-  "vm/compiler", # for internal use primarily
-  "wasm", # excluded from [features], WASM contexts will typically import this crate directly
-  ".integration" # excluded from [features], for CI only
+  "utilities/derives",           # excluded from [features], for internal use primarily
+  "vm/compiler",                 # for internal use primarily
+  "wasm",                        # excluded from [features], WASM contexts will typically import this crate directly
+  ".integration",                # excluded from [features], for CI only
 ]
 
 [lib]
@@ -74,10 +80,31 @@ required-features = ["cli"]
 
 [features]
 default = ["cli", "parallel"]
-full = ["algorithms", "circuit", "console", "curves", "dpc", "fields", "gadgets", "parameters", "r1cs", "utilities"]
+full = [
+  "algorithms",
+  "circuit",
+  "console",
+  "curves",
+  "dpc",
+  "fields",
+  "gadgets",
+  "parameters",
+  "r1cs",
+  "utilities",
+]
 
 ## snarkVM CLI ##
-cli = ["anyhow", "circuit", "console", "clap", "colored", "rand", "self_update", "serde_json", "thiserror"]
+cli = [
+  "anyhow",
+  "circuit",
+  "console",
+  "clap",
+  "colored",
+  "rand",
+  "self_update",
+  "serde_json",
+  "thiserror",
+]
 
 ## snarkVM workspace ##
 algorithms = ["snarkvm-algorithms"]
@@ -94,7 +121,12 @@ utilities = ["snarkvm-utilities"]
 ## snarkVM workspace specific ##
 cuda = ["snarkvm-algorithms/cuda"]
 parameters_no_std_out = ["snarkvm-parameters/no_std_out"]
-parallel = ["rayon", "snarkvm-compiler/parallel", "snarkvm-fields/parallel", "snarkvm-utilities/parallel"]
+parallel = [
+  "rayon",
+  "snarkvm-compiler/parallel",
+  "snarkvm-fields/parallel",
+  "snarkvm-utilities/parallel",
+]
 
 ## CI ##
 noconfig = []

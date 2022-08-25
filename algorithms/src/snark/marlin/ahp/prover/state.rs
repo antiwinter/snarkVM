@@ -113,7 +113,7 @@ impl<'a, F: PrimeField, MM: MarlinMode> State<'a, F, MM> {
                 EvaluationsOnDomain::from_vec_and_domain(padded_public_input.clone(), input_domain).interpolate()
             })
             .collect();
-        ap.set_dynmc("vars", "[F256]", padded_public_input.len()).peek("w=IFFT(vars)");
+        ap.set_dynmc("vars", "[F256]", padded_public_input.len()).peek("x_pl=IFFT(vars)");
 
         let batch_size = private_variables.len();
         assert_eq!(padded_public_input.len(), batch_size);

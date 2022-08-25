@@ -72,5 +72,6 @@ version = "1.4.0"
 [features]
 default = ["std", "derive"]
 std = []
+csv = []
 derive = ["snarkvm-utilities-derives"]
 parallel = ["rayon", "num_cpus", "aleo-std"]
