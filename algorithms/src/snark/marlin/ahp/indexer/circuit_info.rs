@@ -19,12 +19,13 @@ use snarkvm_fields::PrimeField;
 use snarkvm_utilities::{serialize::*, ToBytes};
 
 use core::marker::PhantomData;
+use serde::Serialize;
 
 /// Information about the circuit, including the field of definition, the number of
 /// variables, the number of constraints, and the maximum number of non-zero
 /// entries in any of the constraint matrices.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize)]
 pub struct CircuitInfo<F: Sync + Send> {
     /// The number of public inputs after padding.
     pub num_public_inputs: usize,

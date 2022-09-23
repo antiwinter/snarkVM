@@ -33,6 +33,8 @@ use std::{
     ops::{AddAssign, MulAssign, SubAssign},
 };
 
+use serde::{Serialize, Serializer};
+
 use super::{LabeledPolynomial, PolynomialInfo};
 
 /// `UniversalParams` are the universal parameters for the KZG10 scheme.
@@ -64,7 +66,7 @@ impl<E: PairingEngine> Prepare for Commitment<E> {
 }
 
 /// `CommitterKey` is used to commit to, and create evaluation proofs for, a given polynomial.
-#[derive(Clone, Debug, Default, Hash, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, Default, Hash, CanonicalSerialize, CanonicalDeserialize, Serialize)]
 pub struct CommitterKey<E: PairingEngine> {
     /// The key used to commit to polynomials.
     pub powers_of_beta_g: Vec<E::G1Affine>,
@@ -393,6 +395,12 @@ pub struct VerifierKey<E: PairingEngine> {
     pub max_degree: usize,
 }
 
+impl<E: PairingEngine> Serialize for VerifierKey<E> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str("fk vk")
+    }
+}
+
 impl<E: PairingEngine> FromBytes for VerifierKey<E> {
     fn read_le<R: Read>(mut reader: R) -> io::Result<Self> {
         CanonicalDeserialize::deserialize_compressed(&mut reader)
@@ -464,6 +472,12 @@ pub struct PreparedVerifierKey<E: PairingEngine> {
     /// The maximum degree supported by the trimmed parameters that `self` is
     /// a part of.
     pub supported_degree: usize,
+}
+
+impl<E: PairingEngine> Serialize for  PreparedVerifierKey<E> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str("fk preparedvk sonic")
+    }
 }
 
 impl<E: PairingEngine> PreparedVerifierKey<E> {

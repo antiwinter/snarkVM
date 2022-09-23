@@ -40,7 +40,7 @@ use core::{fmt, marker::PhantomData, str::FromStr};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
 /// Verification key for a specific index (i.e., R1CS matrices).
-#[derive(Debug, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize)]
 pub struct CircuitVerifyingKey<E: PairingEngine, MM: MarlinMode> {
     /// Stores information about the size of the circuit, as well as its defined field.
     pub circuit_info: CircuitInfo<E::Fr>,
@@ -224,15 +224,15 @@ impl<E: PairingEngine, MM: MarlinMode> fmt::Display for CircuitVerifyingKey<E, M
     }
 }
 
-impl<E: PairingEngine, MM: MarlinMode> Serialize for CircuitVerifyingKey<E, MM> {
-    #[inline]
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match serializer.is_human_readable() {
-            true => serializer.collect_str(self),
-            false => ToBytesSerializer::serialize_with_size_encoding(self, serializer),
-        }
-    }
-}
+// impl<E: PairingEngine, MM: MarlinMode> Serialize for CircuitVerifyingKey<E, MM> {
+//     #[inline]
+//     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+//         match serializer.is_human_readable() {
+//             true => serializer.collect_str(self),
+//             false => ToBytesSerializer::serialize_with_size_encoding(self, serializer),
+//         }
+//     }
+// }
 
 impl<'de, E: PairingEngine, MM: MarlinMode> Deserialize<'de> for CircuitVerifyingKey<E, MM> {
     #[inline]

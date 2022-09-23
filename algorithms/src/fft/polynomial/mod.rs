@@ -36,6 +36,8 @@ pub use sparse::SparsePolynomial;
 mod multiplier;
 pub use multiplier::*;
 
+use serde::{Serialize, Serializer};
+
 /// Represents either a sparse polynomial or a dense one.
 #[derive(Clone, Debug)]
 pub enum Polynomial<'a, F: Field> {
@@ -43,6 +45,12 @@ pub enum Polynomial<'a, F: Field> {
     Sparse(Cow<'a, SparsePolynomial<F>>),
     /// Represents the case where `self` is a dense polynomial
     Dense(Cow<'a, DensePolynomial<F>>),
+}
+
+impl<'a, F: Field> Serialize for Polynomial<'a, F> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str("fk polynomial")
+    }
 }
 
 impl<'a, F: Field> CanonicalSerialize for Polynomial<'a, F> {

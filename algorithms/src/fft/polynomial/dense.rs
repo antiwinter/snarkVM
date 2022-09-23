@@ -33,9 +33,10 @@ use itertools::Itertools;
 use rayon::prelude::*;
 
 use super::PolyMultiplier;
+use serde::Serialize;
 
 /// Stores a polynomial in coefficient form.
-#[derive(Clone, PartialEq, Eq, Hash, Default, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Default, CanonicalSerialize, CanonicalDeserialize, Serialize)]
 #[must_use]
 pub struct DensePolynomial<F: Field> {
     /// The coefficient of `x^i` is stored at location `i` in `self.coeffs`.

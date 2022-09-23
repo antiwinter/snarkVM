@@ -30,7 +30,9 @@ pub type G2Affine<P> = Affine<<P as Bls12Parameters>::G2Parameters>;
 pub type G2Projective<P> = Projective<<P as Bls12Parameters>::G2Parameters>;
 type CoeffTriplet<T> = (Fp2<T>, Fp2<T>, Fp2<T>);
 
-#[derive(Derivative, CanonicalSerialize, CanonicalDeserialize)]
+use serde::Serialize;
+
+#[derive(Derivative, CanonicalSerialize, CanonicalDeserialize, Serialize)]
 #[derivative(
     Clone(bound = "P: Bls12Parameters"),
     Debug(bound = "P: Bls12Parameters"),

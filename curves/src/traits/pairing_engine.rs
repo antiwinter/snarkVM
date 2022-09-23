@@ -19,7 +19,9 @@ use snarkvm_fields::{Field, PrimeField, SquareRootField, ToConstraintField};
 
 use core::{fmt::Debug, iter};
 
-pub trait PairingEngine: Sized + 'static + Copy + Debug + PartialEq + Eq + Sync + Send {
+use serde::Serialize;
+
+pub trait PairingEngine: Sized + 'static + Copy + Debug + PartialEq + Eq + Sync + Send + Serialize {
     /// This is the scalar field of the G1/G2 groups.
     type Fr: PrimeField + SquareRootField + Into<<Self::Fr as PrimeField>::BigInteger>;
 

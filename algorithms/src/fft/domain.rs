@@ -72,10 +72,11 @@ pub fn log2(x: usize) -> u32 {
 #[cfg(feature = "parallel")]
 const MIN_PARALLEL_CHUNK_SIZE: usize = 1 << 7;
 
+use serde::Serialize;
 /// Defines a domain over which finite field (I)FFTs can be performed. Works
 /// only for fields that have a large multiplicative subgroup of size that is
 /// a power-of-2.
-#[derive(Copy, Clone, Hash, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Copy, Clone, Hash, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize, Serialize)]
 pub struct EvaluationDomain<F: FftField> {
     /// The size of the domain.
     pub size: u64,
@@ -791,7 +792,7 @@ impl<F: FftField> Iterator for Elements<F> {
 }
 
 /// An iterator over the elements of the domain.
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Serialize)]
 pub struct FFTPrecomputation<F: FftField> {
     roots: Vec<F>,
     domain: EvaluationDomain<F>,
@@ -821,7 +822,7 @@ impl<F: FftField> FFTPrecomputation<F> {
 }
 
 /// An iterator over the elements of the domain.
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Serialize)]
 pub struct IFFTPrecomputation<F: FftField> {
     inverse_roots: Vec<F>,
     domain: EvaluationDomain<F>,

@@ -22,12 +22,14 @@ use snarkvm_curves::PairingEngine;
 use snarkvm_utilities::{
     io::{self, Read, Write},
     serialize::*,
-    FromBytes,
-    ToBytes,
+    FromBytes, ToBytes,
 };
 
+use serde::Serialize;
+use serde_json::Result;
+
 /// Proving key for a specific circuit (i.e., R1CS matrices).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct CircuitProvingKey<E: PairingEngine, MM: MarlinMode> {
     /// The circuit verifying key.
     pub circuit_verifying_key: CircuitVerifyingKey<E, MM>,
@@ -52,11 +54,15 @@ impl<E: PairingEngine, MM: MarlinMode> ToBytes for CircuitProvingKey<E, MM> {
 impl<E: PairingEngine, MM: MarlinMode> FromBytes for CircuitProvingKey<E, MM> {
     #[inline]
     fn read_le<R: Read>(mut reader: R) -> io::Result<Self> {
-        let circuit_verifying_key = CanonicalDeserialize::deserialize_compressed(&mut reader)?;
+        let circuit_verifying_key: CircuitVerifyingKey<E, MM> =
+            CanonicalDeserialize::deserialize_compressed(&mut reader)?;
         let circuit_commitment_randomness = CanonicalDeserialize::deserialize_compressed(&mut reader)?;
         let circuit = CanonicalDeserialize::deserialize_compressed(&mut reader)?;
         let committer_key = FromBytes::read_le(&mut reader)?;
 
+        let j = serde_json::to_string_pretty(&circuit_verifying_key).unwrap();
+        println!("{}", j);
+    
         Ok(Self { circuit_verifying_key, circuit_commitment_randomness, circuit, committer_key })
     }
 }

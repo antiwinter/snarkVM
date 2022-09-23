@@ -26,18 +26,14 @@ use snarkvm_utilities::{
     error,
     io::{Read, Write},
     serialize::{CanonicalDeserialize, CanonicalSerialize},
-    Compress,
-    FromBytes,
-    SerializationError,
-    ToBytes,
-    ToMinimalBits,
-    Validate,
+    Compress, FromBytes, SerializationError, ToBytes, ToMinimalBits, Validate,
 };
 
 use anyhow::Result;
 use core::ops::{Add, AddAssign};
 use parking_lot::RwLock;
 use rand_core::RngCore;
+use serde::{Serialize, Serializer};
 use std::{collections::BTreeMap, io, sync::Arc};
 
 /// `UniversalParams` are the universal parameters for the KZG10 scheme.
@@ -297,6 +293,13 @@ pub struct VerifierKey<E: PairingEngine> {
     pub prepared_beta_h: <E::G2Affine as PairingCurve>::Prepared,
 }
 
+impl<E: PairingEngine> Serialize for VerifierKey<E> {
+    #[inline]
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str("fucking vk")
+    }
+}
+
 impl<E: PairingEngine> FromBytes for VerifierKey<E> {
     fn read_le<R: Read>(mut reader: R) -> io::Result<Self> {
         CanonicalDeserialize::deserialize_compressed(&mut reader)
@@ -338,6 +341,12 @@ pub struct PreparedVerifierKey<E: PairingEngine> {
     pub prepared_beta_h: <E::G2Affine as PairingCurve>::Prepared,
 }
 
+impl<E: PairingEngine> Serialize for  PreparedVerifierKey<E> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str("fk preparedvk")
+    }
+}
+
 impl<E: PairingEngine> PreparedVerifierKey<E> {
     /// prepare `PreparedVerifierKey` from `VerifierKey`
     pub fn prepare(vk: &VerifierKey<E>) -> Self {
@@ -367,7 +376,7 @@ impl<E: PairingEngine> PreparedVerifierKey<E> {
 }
 
 /// `Commitment` commits to a polynomial. It is output by `KZG10::commit`.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, CanonicalSerialize, CanonicalDeserialize, Serialize)]
 pub struct Commitment<E: PairingEngine>(
     /// The commitment is a group element.
     pub E::G1Affine,
@@ -413,7 +422,7 @@ impl<E: PairingEngine> ToConstraintField<E::Fq> for Commitment<E> {
 }
 
 /// `PreparedCommitment` commits to a polynomial and prepares for mul_bits.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize)]
 pub struct PreparedCommitment<E: PairingEngine>(
     /// The commitment is a group element.
     pub Vec<E::G1Affine>,
@@ -437,7 +446,7 @@ impl<E: PairingEngine> PreparedCommitment<E> {
 }
 
 /// `Randomness` hides the polynomial inside a commitment. It is output by `KZG10::commit`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, CanonicalSerialize, CanonicalDeserialize, Serialize)]
 pub struct Randomness<E: PairingEngine> {
     /// For KZG10, the commitment randomness is a random polynomial.
     pub blinding_polynomial: DensePolynomial<E::Fr>,

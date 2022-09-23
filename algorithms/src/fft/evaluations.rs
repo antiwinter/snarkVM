@@ -28,9 +28,9 @@ use snarkvm_utilities::{antiprofiler::poke, cfg_iter, cfg_iter_mut, serialize::*
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 use super::domain::IFFTPrecomputation;
-
+use serde::Serialize;
 /// Stores a polynomial in evaluation form.
-#[derive(Clone, PartialEq, Eq, Hash, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize)]
 pub struct Evaluations<F: PrimeField> {
     /// The evaluations of a polynomial over the domain `D`
     pub evaluations: Vec<F>,

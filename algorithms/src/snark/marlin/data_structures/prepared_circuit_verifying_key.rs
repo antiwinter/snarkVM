@@ -21,8 +21,8 @@ use crate::{
 use snarkvm_curves::PairingEngine;
 
 /// Verification key, prepared (preprocessed) for use in pairings.
-
-#[derive(Clone)]
+use serde::Serialize;
+#[derive(Clone, Serialize)]
 pub struct PreparedCircuitVerifyingKey<E: PairingEngine, MM: MarlinMode> {
     /// Size of the variable domain.
     pub constraint_domain_size: u64,

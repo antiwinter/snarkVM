@@ -27,7 +27,8 @@ use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Eq, PartialEq)]
+use serde::Serialize;
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Eq, PartialEq, Serialize)]
 pub struct PolynomialInfo {
     label: PolynomialLabel,
     degree_bound: Option<usize>,
@@ -64,7 +65,7 @@ impl PolynomialInfo {
 /// A polynomial along with information about its degree bound (if any), and the
 /// maximum number of queries that will be made to it. This latter number determines
 /// the amount of protection that will be provided to a commitment for this polynomial.
-#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize, Serialize)]
 pub struct LabeledPolynomial<F: Field> {
     pub info: PolynomialInfo,
     pub polynomial: Polynomial<'static, F>,

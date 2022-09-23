@@ -90,7 +90,8 @@ pub(crate) fn make_matrices_square<F: Field, CS: ConstraintSystem<F>>(cs: &mut C
     }
 }
 
-#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+use serde::Serialize;
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize)]
 pub struct MatrixEvals<F: PrimeField> {
     /// Evaluations of the `row` polynomial.
     pub row: EvaluationsOnDomain<F>,
@@ -101,6 +102,7 @@ pub struct MatrixEvals<F: PrimeField> {
     /// Evaluations of the `row_col` polynomial.
     pub row_col: EvaluationsOnDomain<F>,
 }
+
 
 impl<F: PrimeField> MatrixEvals<F> {
     pub(crate) fn evaluate(&self, lagrange_coefficients_at_point: &[F]) -> [F; 4] {
@@ -115,7 +117,7 @@ impl<F: PrimeField> MatrixEvals<F> {
 
 /// Contains information about the arithmetization of the matrix M^*.
 /// Here `M^*(i, j) := M(j, i) * u_H(j, j)`. For more details, see [\[COS20\]](https://eprint.iacr.org/2019/1076).
-#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize, Serialize)]
 pub struct MatrixArithmetization<F: PrimeField> {
     /// LDE of the row indices of M^*.
     pub row: LabeledPolynomial<F>,
