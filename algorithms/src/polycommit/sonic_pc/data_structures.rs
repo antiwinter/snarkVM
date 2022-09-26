@@ -374,7 +374,7 @@ impl<E: PairingEngine> CommitterKey<E> {
 }
 
 /// `VerifierKey` is used to check evaluation proofs for a given commitment.
-#[derive(Clone, Debug, Default, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize)]
 pub struct VerifierKey<E: PairingEngine> {
     /// The verification key for the underlying KZG10 scheme.
     pub vk: kzg10::VerifierKey<E>,
@@ -395,11 +395,11 @@ pub struct VerifierKey<E: PairingEngine> {
     pub max_degree: usize,
 }
 
-impl<E: PairingEngine> Serialize for VerifierKey<E> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str("fk vk")
-    }
-}
+// impl<E: PairingEngine> Serialize for VerifierKey<E> {
+//     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+//         serializer.serialize_str("fk vk")
+//     }
+// }
 
 impl<E: PairingEngine> FromBytes for VerifierKey<E> {
     fn read_le<R: Read>(mut reader: R) -> io::Result<Self> {

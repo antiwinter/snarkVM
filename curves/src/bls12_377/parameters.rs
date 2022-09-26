@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with the snarkVM library. If not, see <https://www.gnu.org/licenses/>.
 
+use serde::Serialize;
+
 use crate::{
     bls12_377::{
         g1::Bls12_377G1Parameters,
@@ -38,7 +40,7 @@ use crate::{
     traits::{PairingCurve, PairingEngine},
 };
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Bls12_377Parameters;
 
 impl Bls12Parameters for Bls12_377Parameters {

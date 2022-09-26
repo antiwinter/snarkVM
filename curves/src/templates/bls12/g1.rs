@@ -21,6 +21,7 @@ use crate::{
     },
     traits::AffineCurve,
 };
+use serde::Serialize;
 use snarkvm_fields::Zero;
 use snarkvm_utilities::{serialize::*, FromBytes, ToBytes};
 
@@ -29,7 +30,7 @@ use std::io::{Read, Result as IoResult, Write};
 pub type G1Affine<P> = Affine<<P as Bls12Parameters>::G1Parameters>;
 pub type G1Projective<P> = Projective<<P as Bls12Parameters>::G1Parameters>;
 
-#[derive(Derivative, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Derivative, CanonicalSerialize, CanonicalDeserialize, Serialize)]
 #[derivative(
     Clone(bound = "P: Bls12Parameters"),
     Debug(bound = "P: Bls12Parameters"),

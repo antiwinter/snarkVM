@@ -239,6 +239,7 @@ pub trait PairingCurve: AffineCurve {
         + Send
         + Sync
         + Debug
+        + Serialize
         + 'static;
     type PairWith: PairingCurve<PairWith = Self>;
     type PairingResult: Field;
