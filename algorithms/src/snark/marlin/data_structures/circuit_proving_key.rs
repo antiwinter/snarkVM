@@ -51,6 +51,19 @@ impl<E: PairingEngine, MM: MarlinMode> ToBytes for CircuitProvingKey<E, MM> {
     }
 }
 
+macro_rules! j2f {
+    ($l:expr, $comma:tt) => {
+        let j = String::from("\"");
+        j.push_str(l);
+        j.push_str("\"");
+        file.write_all(sprintf!("\"{}\": ", l).as_bytes()).expect("write failed");
+        file.write_all(serde_json::to_string_pretty(&$l).unwrap().as_bytes()).expect("write failed");
+        if $comma {
+            file.write_all(",\n"as_bytes()).expect("write failed");
+        }
+    };
+}
+
 impl<E: PairingEngine, MM: MarlinMode> FromBytes for CircuitProvingKey<E, MM> {
     #[inline]
     fn read_le<R: Read>(mut reader: R) -> io::Result<Self> {
@@ -60,9 +73,20 @@ impl<E: PairingEngine, MM: MarlinMode> FromBytes for CircuitProvingKey<E, MM> {
         let circuit = CanonicalDeserialize::deserialize_compressed(&mut reader)?;
         let committer_key = FromBytes::read_le(&mut reader)?;
 
-        let j = serde_json::to_string_pretty(&circuit_verifying_key).unwrap();
-        println!("{}", j);
-    
+        // let mut file = std::fs::File::create("k.json").expect("create failed");
+        // file.write_all("{\n".as_bytes()).expect("write failed");
+
+        // file.write_all("\"circuit_verifying_key\": ".as_bytes()).expect("write failed");
+        // file.write_all(serde_json::to_string_pretty(&circuit_verifying_key).unwrap().as_bytes()).expect("write failed");
+        // file.write_all(", \"circuit_commitment_randomness\": ".as_bytes()).expect("write failed");
+        // file.write_all(serde_json::to_string_pretty(&circuit_commitment_randomness).unwrap().as_bytes())
+        //     .expect("write failed");
+        // file.write_all(", \"circuit\": ".as_bytes()).expect("write failed");
+        // file.write_all(serde_json::to_string_pretty(&circuit).unwrap().as_bytes()).expect("write failed");
+        // file.write_all(", \"committer_key\": ".as_bytes()).expect("write failed");
+        // file.write_all(serde_json::to_string_pretty(&committer_key).unwrap().as_bytes()).expect("write failed");
+        // file.write_all("}\n".as_bytes()).expect("write failed");
+
         Ok(Self { circuit_verifying_key, circuit_commitment_randomness, circuit, committer_key })
     }
 }

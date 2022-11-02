@@ -277,7 +277,7 @@ impl<E: PairingEngine> LagrangeBasis<'_, E> {
 }
 
 /// `VerifierKey` is used to check evaluation proofs for a given commitment.
-#[derive(Clone, Debug, Default, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize)]
 pub struct VerifierKey<E: PairingEngine> {
     /// The generator of G1.
     pub g: E::G1Affine,
@@ -293,12 +293,12 @@ pub struct VerifierKey<E: PairingEngine> {
     pub prepared_beta_h: <E::G2Affine as PairingCurve>::Prepared,
 }
 
-impl<E: PairingEngine> Serialize for VerifierKey<E> {
-    #[inline]
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str("fucking vk")
-    }
-}
+// impl<E: PairingEngine> Serialize for VerifierKey<E> {
+//     #[inline]
+//     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+//         serializer.serialize_str("fucking vk")
+//     }
+// }
 
 impl<E: PairingEngine> FromBytes for VerifierKey<E> {
     fn read_le<R: Read>(mut reader: R) -> io::Result<Self> {
