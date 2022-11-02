@@ -32,7 +32,9 @@ use rand::{
     Rng,
 };
 
-#[derive(Copy, Clone, PartialEq, Eq, Default, Hash)]
+use serde::Serialize;
+
+#[derive(Copy, Clone, PartialEq, Eq, Default, Hash, Serialize)]
 pub struct BigInteger384(pub [u64; 6]);
 
 impl BigInteger384 {

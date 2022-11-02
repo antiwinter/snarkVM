@@ -24,6 +24,8 @@ pub use bigint_256::*;
 mod bigint_384;
 pub use bigint_384::*;
 
+use serde::Serialize;
+
 #[cfg(test)]
 mod tests;
 
@@ -49,6 +51,7 @@ pub trait BigInteger:
     + AsMut<[u64]>
     + AsRef<[u64]>
     + From<u64>
+    + Serialize
 {
     /// The number of limbs used in this BigInteger.
     const NUM_LIMBS: usize;
